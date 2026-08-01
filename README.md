@@ -145,7 +145,8 @@ whose ownership path cannot yet be proven.
    Direct wallet actions and independent verification should remain permissionless.
 
 See [BRC100_COLLECTION_MATRIX.md](BRC100_COLLECTION_MATRIX.md) for the current
-wallet compatibility and release gates.
+wallet compatibility and release gates, and [OVERLAY.md](OVERLAY.md) for the
+local LARS, lifecycle-indexing, parity, and CARS deployment plan.
 
 ## Public fixture policy
 
