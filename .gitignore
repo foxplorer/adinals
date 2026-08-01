@@ -1,0 +1,26 @@
+# Dependencies and generated output
+node_modules/
+dist/
+.selftest-dist/
+coverage/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
+# Local environment overrides (the documented template is safe to commit)
+.env
+.env.*
+!.env.example
+
+# Editor and operating-system files
+.DS_Store
+*.swp
+*.swo
+
+# Live wallet exports contain signed transactions and Atomic BEEF. A no-send
+# marker does not make them safe to publish: anyone with the complete package
+# may be able to submit it. Only the explicitly allowlisted transaction that is
+# already public on mainnet belongs in Git.
+adinals-collection-*.json
+tests/fixtures/collections/*.json
+!tests/fixtures/collections/published-mainnet-yours-446af364.json

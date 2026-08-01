@@ -1,0 +1,36 @@
+{
+  "name": "adinals-brc100",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/foxplorer/adinals.git"
+  },
+  "homepage": "https://adinals.com",
+  "bugs": "https://github.com/foxplorer/adinals/issues",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --force --host 0.0.0.0 --port 5176 --strictPort",
+    "build": "tsc -b && vite build",
+    "test": "node --experimental-strip-types --test src/**/*.test.ts && npm run test:script",
+    "test:script": "vite build --config scripts/vite.selftest.config.ts && node .selftest-dist/collection-script-selftest.js",
+    "preview": "vite preview --host 0.0.0.0 --port 4176 --strictPort"
+  },
+  "dependencies": {
+    "@1sat/actions": "0.0.184",
+    "@1sat/templates": "0.0.24",
+    "@1sat/types": "0.0.34",
+    "@bsv/message-box-client": "2.2.2",
+    "@bsv/sdk": "2.1.6",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
+    "@vitejs/plugin-react": "6.0.4",
+    "typescript": "5.9.3",
+    "vite": "8.1.5"
+  }
+}
