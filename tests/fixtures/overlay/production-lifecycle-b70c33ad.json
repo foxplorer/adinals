@@ -1,0 +1,110 @@
+{
+  "format": "adinals-production-lifecycle-v1",
+  "capturedAt": "2026-08-01T20:43:43.417Z",
+  "network": "mainnet",
+  "namespace": {
+    "app": "adinals",
+    "type": "ord",
+    "protocolVersion": "3"
+  },
+  "collection": {
+    "origin": "b70c33ad75c6588826bfdb0cee0f9ed5aedc39b7856232f2b13a69f57e8f6ed2_0",
+    "creator": "1GJ7dV4brVtxKv8nsKreMxKCjkpYsEcF3b",
+    "capacity": 5,
+    "approval": "creator",
+    "format": "text",
+    "expiresAt": "2026-08-08T17:38:39.643Z"
+  },
+  "ads": [
+    {
+      "origin": "9fed554ffcf2039ebbc229f9ce9ebf670374ef1a6f0aa99556b21ffbe25b8797_0",
+      "slot": 2,
+      "creator": "1GJ7dV4brVtxKv8nsKreMxKCjkpYsEcF3b",
+      "ownershipOutpoints": [
+        "9fed554ffcf2039ebbc229f9ce9ebf670374ef1a6f0aa99556b21ffbe25b8797_0",
+        "85a493b964a1ec6e7dd6708739a60f53095af9f0f1d2ebfed0de25b0d653ee66_0",
+        "4d630c9c43e56d0bfdc4d4b2a658fe3edef97d0bba8da7b028493b6b71f4e4ae_0",
+        "7b2af508ab285e562bb411429588a7b3733577558fbb263de4535e89f999bd9e_0"
+      ],
+      "listing": {
+        "outpoint": "85a493b964a1ec6e7dd6708739a60f53095af9f0f1d2ebfed0de25b0d653ee66_0",
+        "seller": "1GJ7dV4brVtxKv8nsKreMxKCjkpYsEcF3b",
+        "priceSatoshis": 5
+      },
+      "purchase": {
+        "outpoint": "4d630c9c43e56d0bfdc4d4b2a658fe3edef97d0bba8da7b028493b6b71f4e4ae_0",
+        "buyer": "1CX63hYeUypsvrSmShgo1mh7Jn1KuaStx9"
+      },
+      "update": {
+        "transitionTxid": "7b2af508ab285e562bb411429588a7b3733577558fbb263de4535e89f999bd9e",
+        "predecessorOutpoint": "4d630c9c43e56d0bfdc4d4b2a658fe3edef97d0bba8da7b028493b6b71f4e4ae_0",
+        "successorOutpoint": "7b2af508ab285e562bb411429588a7b3733577558fbb263de4535e89f999bd9e_0",
+        "recordOutpoint": "7b2af508ab285e562bb411429588a7b3733577558fbb263de4535e89f999bd9e_1",
+        "ownerEpoch": "4d630c9c43e56d0bfdc4d4b2a658fe3edef97d0bba8da7b028493b6b71f4e4ae_0",
+        "signer": "1CX63hYeUypsvrSmShgo1mh7Jn1KuaStx9",
+        "text": "ad 2 update meta"
+      },
+      "decision": {
+        "outpoint": "87cc8280dd5ab6fceb3d84ab98dcef246fbcb8a3462b68ea0ca8e95f81577ce1_0",
+        "verdict": "approved",
+        "transitionTxid": "7b2af508ab285e562bb411429588a7b3733577558fbb263de4535e89f999bd9e",
+        "successorOutpoint": "7b2af508ab285e562bb411429588a7b3733577558fbb263de4535e89f999bd9e_0",
+        "updateOutpoint": "7b2af508ab285e562bb411429588a7b3733577558fbb263de4535e89f999bd9e_1",
+        "ownerEpoch": "4d630c9c43e56d0bfdc4d4b2a658fe3edef97d0bba8da7b028493b6b71f4e4ae_0",
+        "signer": "1GJ7dV4brVtxKv8nsKreMxKCjkpYsEcF3b"
+      },
+      "expected": {
+        "currentOutpoint": "7b2af508ab285e562bb411429588a7b3733577558fbb263de4535e89f999bd9e_0",
+        "owner": "1CX63hYeUypsvrSmShgo1mh7Jn1KuaStx9",
+        "proposalStatus": "live",
+        "creativeSourceOutpoint": "7b2af508ab285e562bb411429588a7b3733577558fbb263de4535e89f999bd9e_1",
+        "creativeText": "ad 2 update meta"
+      }
+    },
+    {
+      "origin": "b320dcb7a8c1576624d0bbbdc95c76e893df82b8855fab06618f823f6ce832cd_0",
+      "slot": 3,
+      "creator": "1GJ7dV4brVtxKv8nsKreMxKCjkpYsEcF3b",
+      "ownershipOutpoints": [
+        "b320dcb7a8c1576624d0bbbdc95c76e893df82b8855fab06618f823f6ce832cd_0",
+        "cebd29f7617691560df1c04e4f7b0f22a653f0f994077d4a9db5102dbdb80db4_0",
+        "a8be697a7831251df9939349415136ea811a1d0f874b30ed7e362512316ba7b7_0",
+        "a2d1f361054195155fb6e5d34838129dc33396afa52328cc8faefc56a36c224e_0"
+      ],
+      "listing": {
+        "outpoint": "cebd29f7617691560df1c04e4f7b0f22a653f0f994077d4a9db5102dbdb80db4_0",
+        "seller": "1GJ7dV4brVtxKv8nsKreMxKCjkpYsEcF3b",
+        "priceSatoshis": 6
+      },
+      "purchase": {
+        "outpoint": "a8be697a7831251df9939349415136ea811a1d0f874b30ed7e362512316ba7b7_0",
+        "buyer": "19ACW97BDW3iGyKyJyRwaZPQUAp4hkrWdT"
+      },
+      "update": {
+        "transitionTxid": "a2d1f361054195155fb6e5d34838129dc33396afa52328cc8faefc56a36c224e",
+        "predecessorOutpoint": "a8be697a7831251df9939349415136ea811a1d0f874b30ed7e362512316ba7b7_0",
+        "successorOutpoint": "a2d1f361054195155fb6e5d34838129dc33396afa52328cc8faefc56a36c224e_0",
+        "recordOutpoint": "a2d1f361054195155fb6e5d34838129dc33396afa52328cc8faefc56a36c224e_1",
+        "ownerEpoch": "a8be697a7831251df9939349415136ea811a1d0f874b30ed7e362512316ba7b7_0",
+        "signer": "19ACW97BDW3iGyKyJyRwaZPQUAp4hkrWdT",
+        "text": "ad 3 update"
+      },
+      "decision": {
+        "outpoint": "8643bf272cda9725ac085b56f0f038b53f3b27816bafc31e47b35a3d35b6cf8b_0",
+        "verdict": "approved",
+        "transitionTxid": "a2d1f361054195155fb6e5d34838129dc33396afa52328cc8faefc56a36c224e",
+        "successorOutpoint": "a2d1f361054195155fb6e5d34838129dc33396afa52328cc8faefc56a36c224e_0",
+        "updateOutpoint": "a2d1f361054195155fb6e5d34838129dc33396afa52328cc8faefc56a36c224e_1",
+        "ownerEpoch": "a8be697a7831251df9939349415136ea811a1d0f874b30ed7e362512316ba7b7_0",
+        "signer": "1GJ7dV4brVtxKv8nsKreMxKCjkpYsEcF3b"
+      },
+      "expected": {
+        "currentOutpoint": "a2d1f361054195155fb6e5d34838129dc33396afa52328cc8faefc56a36c224e_0",
+        "owner": "19ACW97BDW3iGyKyJyRwaZPQUAp4hkrWdT",
+        "proposalStatus": "live",
+        "creativeSourceOutpoint": "a2d1f361054195155fb6e5d34838129dc33396afa52328cc8faefc56a36c224e_1",
+        "creativeText": "ad 3 update"
+      }
+    }
+  ]
+}

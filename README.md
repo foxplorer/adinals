@@ -77,7 +77,7 @@ npm run build
 npm run preview
 ```
 
-The repository currently passes 26 Node test files, the independent collection
+The repository currently passes 27 Node test files, the independent collection
 script/fixture verifier, TypeScript compilation, and the production Vite build.
 
 ## Environment switches
@@ -97,10 +97,18 @@ casually; existing wallet custody and public records depend on them.
 
 ## Public reading and embedding
 
-The hosted reader exposes:
+The hosted reader currently uses this base URL:
 
-- `/adinals/v1/collections/{origin}/live`
-- `/adinals/v1/ads/{origin}`
+`https://tenmillionfoxes-99288f417d7b.herokuapp.com/adinals/v1`
+
+It exposes:
+
+- `https://tenmillionfoxes-99288f417d7b.herokuapp.com/adinals/v1/collections/{origin}/live`
+- `https://tenmillionfoxes-99288f417d7b.herokuapp.com/adinals/v1/ads/{origin}`
+
+Those are reader-service routes, not relative routes on `adinals.com`. The web
+application and embed component use the configured `VITE_ADINALS_API_BASE`.
+A stable `api.adinals.com` origin is planned before publishing the agent SDK.
 
 Consumers must check `displayEligible`. Render text as text rather than HTML,
 treat destination URLs as untrusted external links, and keep a local fallback
@@ -122,16 +130,19 @@ whose ownership path cannot yet be proven.
 
 ## Roadmap
 
-1. Add a BRC-22/BRC-24/BRC-64 Adinals overlay with verified unconfirmed
-   transaction-package ingestion and retain GorillaPool as a fallback during
-   parity testing.
-2. Publish a typed agent SDK/CLI or MCP interface that accepts an agent-owned
-   BRC-100 `WalletInterface`; never accept seeds, WIFs, or mnemonics.
-3. Add publisher moderation, reputation, scam warnings, and clearer separation
+1. Complete the remaining wallet-restart, image-lifecycle, and emergency-switch
+   beta drills, then tag the reference application.
+2. Build a BRC-22/BRC-24/BRC-64 Adinals overlay locally with LARS, verify it
+   against the retained production lifecycle manifest, and dual-read it against
+   GorillaPool before deploying it with CARS.
+3. Publish a read-only typed SDK/CLI or MCP interface against a stable
+   `api.adinals.com` origin, then add wallet-authorized actions through an
+   injected BRC-100 `WalletInterface`; never accept seeds, WIFs, or mnemonics.
+4. Add publisher moderation, reputation, scam warnings, and clearer separation
    between protocol-valid, collection-approved, and publisher-featured content.
-4. Consider x402 payments only for hosted services such as high-availability
-   history, proof delivery, moderation, analytics, and relays. Direct wallet
-   actions and independent verification should remain permissionless.
+5. Consider BRC-121 HTTP 402 payments only for hosted services such as
+   high-availability history, proof delivery, moderation, analytics, and relays.
+   Direct wallet actions and independent verification should remain permissionless.
 
 See [BRC100_COLLECTION_MATRIX.md](BRC100_COLLECTION_MATRIX.md) for the current
 wallet compatibility and release gates.
@@ -143,6 +154,11 @@ may be committed. Never commit private keys, seeds, mnemonics, wallet identity
 keys, wallet-local action references, or a signed unbroadcast transaction
 package. A complete no-send Atomic BEEF can itself authorize a broadcast even
 when it contains no private key.
+
+The retained production lifecycle manifest in
+`tests/fixtures/overlay/production-lifecycle-b70c33ad.json` contains public
+outpoints and expected derived state only. It deliberately excludes raw
+transactions, Atomic BEEF, and wallet-local routing data.
 
 ## License
 

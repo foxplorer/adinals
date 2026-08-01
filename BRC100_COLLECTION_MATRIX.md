@@ -106,22 +106,28 @@ that every negative vector is rejected.
 | Yours and Metanet core action parity | Pass, with live recovery retests noted above |
 | Exact-output index status rather than submit-only status | Implemented and tested |
 | Provisional UI for incomplete or invisible cross-wallet spends | Implemented and tested |
-| Signed-out immutable routes and fallback browser checks | Pending final public-release pass |
+| Signed-out immutable routes and embed availability | Live production pass |
 | Emergency read-only switches | Automated pass; live operator drill pending |
-| Public fixture/history sanitation | Current tree sanitized; clean public history pending |
+| Public fixture/history sanitation | Pass; clean public repository and history published |
+| Production lifecycle parity manifest | Initial two-ad sale/update/approval vectors retained; transaction-package expansion pending |
+| Stable public API origin | Pending `api.adinals.com` before agent SDK release |
 | Overlay parity and unconfirmed proof delivery | Not implemented |
 | Agent SDK/CLI/MCP interface | Not implemented |
 | Publisher moderation/reputation layer | Not implemented |
 
-Overlay and agent work are roadmap items, not prerequisites for publishing the
-current application as an explicitly labeled open-source beta. Repository
-sanitation and a clean public history are prerequisites.
+The explicitly labeled open-source beta is live from the clean public repository.
+Overlay and agent work are the next infrastructure phase rather than blockers
+for the current beta.
 
 ## Next implementation order
 
-1. Create the clean public Git history and perform a final tracked-object audit.
+1. Complete live restart recovery in Yours and Metanet, one image lifecycle,
+   and an emergency-switch preview drill.
 2. Tag the current frontend/reference verifier as `v0.1.0-beta`.
-3. Build the minimal Adinals overlay and dual-read it against GorillaPool.
-4. Publish the wallet-injected agent action package.
-5. Add publisher moderation/reputation tools before promoting unrestricted
+3. Expand the retained production lifecycle manifest with confirmed transaction
+   packages, then build the minimal overlay locally with LARS.
+4. Dual-read the overlay against GorillaPool before deploying with CARS and
+   moving the reader behind `api.adinals.com`.
+5. Publish a read-only agent package, followed by wallet-injected write actions.
+6. Add publisher moderation/reputation tools before promoting unrestricted
    collection discovery as trusted advertising inventory.
