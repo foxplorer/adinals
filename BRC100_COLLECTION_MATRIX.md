@@ -109,9 +109,11 @@ that every negative vector is rejected.
 | Signed-out immutable routes and embed availability | Live production pass |
 | Emergency read-only switches | Automated pass; live operator drill pending |
 | Public fixture/history sanitation | Pass; clean public repository and history published |
-| Production lifecycle parity manifest | Initial two-ad sale/update/approval vectors retained; transaction-package expansion pending |
+| Production lifecycle parity manifest | Two complete sale/update/approval vectors retained and passing against a populated overlay |
 | Stable public API origin | Pending `api.adinals.com` before agent SDK release |
-| Overlay parity and unconfirmed proof delivery | Not implemented |
+| Local overlay admission/history | Pass: clean confirmed v3 namespace replay admitted 69 transactions with zero failures |
+| Browser dual-read and unconfirmed overlay submission | Pending |
+| CARS shadow deployment | Pending after dual-read parity |
 | Agent SDK/CLI/MCP interface | Not implemented |
 | Publisher moderation/reputation layer | Not implemented |
 
@@ -124,10 +126,14 @@ for the current beta.
 1. Complete live restart recovery in Yours and Metanet, one image lifecycle,
    and an emergency-switch preview drill.
 2. Tag the current frontend/reference verifier as `v0.1.0-beta`.
-3. Expand the retained production lifecycle manifest with confirmed transaction
-   packages, then build the minimal overlay locally with LARS.
-4. Dual-read the overlay against GorillaPool before deploying with CARS and
+3. Submit every successful wallet action to the local LARS overlay and add
+   confirmed reconciliation for marketplace actions created elsewhere.
+4. Dual-read the populated overlay against GorillaPool/current reader before
+   deploying with CARS and
    moving the reader behind `api.adinals.com`.
 5. Publish a read-only agent package, followed by wallet-injected write actions.
 6. Add publisher moderation/reputation tools before promoting unrestricted
    collection discovery as trusted advertising inventory.
+
+Use the canonical [overlay continuation handoff](OVERLAY.md#continuation-handoff)
+when resuming implementation in a later coding session.

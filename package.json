@@ -15,6 +15,12 @@
     "build": "tsc -b && vite build",
     "test": "node --experimental-strip-types --test src/**/*.test.ts && npm run test:script",
     "test:script": "vite build --config scripts/vite.selftest.config.ts && node .selftest-dist/collection-script-selftest.js",
+    "overlay:config": "lars config",
+    "overlay:start": "lars start",
+    "overlay:backfill": "node --experimental-strip-types scripts/overlay-backfill.ts",
+    "overlay:smoke": "node --experimental-strip-types scripts/overlay-local-smoke.ts",
+    "overlay:test": "npm test --prefix backend",
+    "overlay:typecheck": "npm run typecheck --prefix backend",
     "preview": "vite preview --host 0.0.0.0 --port 4176 --strictPort"
   },
   "dependencies": {
@@ -27,6 +33,7 @@
     "react-dom": "18.3.1"
   },
   "devDependencies": {
+    "@bsv/lars": "^1.5.8",
     "@types/react": "18.3.31",
     "@types/react-dom": "18.3.7",
     "@vitejs/plugin-react": "6.0.4",

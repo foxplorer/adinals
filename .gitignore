@@ -6,6 +6,11 @@ coverage/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+backend/node_modules/
+backend/dist/
+backend/dist-test/
+local-data/
+.lars-keys.json
 
 # Local environment overrides (the documented template is safe to commit)
 .env

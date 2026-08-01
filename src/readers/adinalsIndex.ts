@@ -148,6 +148,9 @@ export async function readCollectionAds(
   const ads = await readIndexedAdinals('ad', fetcher)
   return ads.filter((ad) => {
     const raw = ad.map.subTypeData
+    if (raw && typeof raw === 'object') {
+      return (raw as { collectionId?: unknown }).collectionId === normalized
+    }
     if (typeof raw !== 'string') return false
     try {
       return (JSON.parse(raw) as { collectionId?: unknown }).collectionId === normalized

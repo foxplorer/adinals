@@ -77,8 +77,9 @@ npm run build
 npm run preview
 ```
 
-The repository currently passes 27 Node test files, the independent collection
-script/fixture verifier, TypeScript compilation, and the production Vite build.
+The repository currently passes 27 browser/application Node test files, the
+independent collection script/fixture verifier, the backend overlay suite,
+TypeScript compilation, and the production Vite build.
 
 ## Environment switches
 
@@ -128,13 +129,23 @@ listing or update before it exposes the intervening spend chain and owner epoch.
 The application labels these states as provisional and never approves an update
 whose ownership path cannot yet be proven.
 
+An experimental local LARS overlay is now included under `backend/`. Its topic
+manager and lookup resolver replay the confirmed production version 3
+namespace, including OrdLock listing/purchase classification, owner epochs,
+updates, creator decisions, full history, current creative, collection-wide
+live proof sets, and pending-decision resolution. A clean 2026-08-01 replay
+admitted 69 transactions spanning five collections, 18 mints, 38 lifecycle
+transitions, and eight decisions with no failures or unresolved confirmed spend
+links. It is not deployed publicly or used by the production browser yet;
+GorillaPool remains the live discovery path.
+
 ## Roadmap
 
 1. Complete the remaining wallet-restart, image-lifecycle, and emergency-switch
    beta drills, then tag the reference application.
-2. Build a BRC-22/BRC-24/BRC-64 Adinals overlay locally with LARS, verify it
-   against the retained production lifecycle manifest, and dual-read it against
-   GorillaPool before deploying it with CARS.
+2. Submit successful wallet actions to the local overlay and run automated
+   dual-read parity against GorillaPool/the current reader, then deploy the
+   BRC-22/BRC-24/BRC-64 service in CARS shadow mode while retaining fallback.
 3. Publish a read-only typed SDK/CLI or MCP interface against a stable
    `api.adinals.com` origin, then add wallet-authorized actions through an
    injected BRC-100 `WalletInterface`; never accept seeds, WIFs, or mnemonics.
@@ -146,7 +157,9 @@ whose ownership path cannot yet be proven.
 
 See [BRC100_COLLECTION_MATRIX.md](BRC100_COLLECTION_MATRIX.md) for the current
 wallet compatibility and release gates, and [OVERLAY.md](OVERLAY.md) for the
-local LARS, lifecycle-indexing, parity, and CARS deployment plan.
+local LARS, lifecycle-indexing, parity, and CARS deployment plan. The
+[continuation handoff](OVERLAY.md#continuation-handoff) is the canonical prompt
+for resuming implementation without reconstructing the current state.
 
 ## Public fixture policy
 

@@ -92,12 +92,17 @@ test('narrows ads to one collection client-side, since subTypeData is not filter
         subType: 'collectionItem',
         subTypeData: JSON.stringify({ collectionId: other, mintNumber: 1 }),
       }),
+      indexRow(`${'b'.repeat(64)}_0`, {
+        subType: 'collectionItem',
+        subTypeData: { collectionId, mintNumber: 2 },
+      }),
       indexRow(`${'f'.repeat(64)}_0`, { subType: 'collectionItem', subTypeData: 'not json' }),
     ]), { status: 200 })
   }
   const ads = await readCollectionAds(collectionId, fetcher as typeof fetch)
-  assert.equal(ads.length, 1)
+  assert.equal(ads.length, 2)
   assert.equal(ads[0]?.outpoint, `${'d'.repeat(64)}_0`)
+  assert.equal(ads[1]?.outpoint, `${'b'.repeat(64)}_0`)
 })
 
 test('reads one exact output and reports an unindexed one as absent', async () => {
