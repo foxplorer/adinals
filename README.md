@@ -4,11 +4,11 @@
 [GitHub](https://github.com/foxplorer/adinals) ·
 [MIT License](LICENSE)
 
-Adinals is an open-source explorer and BRC-100 wallet application for finite,
-ownable live-content slots on Bitcoin SV. Creators define a collection, mint its
-slots, and choose whether owner updates publish automatically or require creator
-review. Owners can update, list, buy, and resell a slot without giving Adinals
-their private keys.
+Adinals is an open-source protocol explorer and BRC-100 wallet application for
+finite, ownable live-content slots on Bitcoin SV. Creators define a collection,
+mint its slots, and choose whether owner updates publish automatically or require
+creator review. Owners can update, list, buy, and resell a slot without giving
+Adinals their private keys.
 
 The production application uses the exact MAP identity `app=adinals`,
 `type=ord`, and `protocolVersion=3`.
