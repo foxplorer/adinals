@@ -149,7 +149,9 @@ the same collection from the overlay and records whether the two agree. Nothing
 it produces reaches the screen.
 
 Reads have not moved, and moving them is the current direction rather than a
-finished state. The reason is not speed: BEEF lets a client verify ownership,
+finished state. The application is stable on the current path: nothing renders
+from the overlay yet, the groundwork is in place, and the ordered migration
+steps are in [OVERLAY.md](OVERLAY.md). The reason is not speed: BEEF lets a client verify ownership,
 signatures, and history by SPV instead of trusting a service. One measured
 consequence already shows the gap. A newly published image ad is served by the
 overlay immediately, while public content hosts return 404 until the

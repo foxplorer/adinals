@@ -680,7 +680,17 @@ Verified state as of 2026-08-02, end of session:
   thousand satoshis whose 129 KB BEEF the browser submitted successfully.
 - Stage one overlay shadow reads run in the product, comparing the configured
   overlay against the rendered reader on every collection view, and match.
-- 178 application tests, 33 backend tests, typecheck, script self-test, and the
+- A `collectionProjection` lookup, deployed as release `9931d359`, returns an
+  entire collection in one request. Browser reads fell from three to nine
+  seconds down to 0.8 seconds for text collections and 2.3 to 2.8 for
+  image-heavy ones, and both read paths were proven to produce identical
+  projections across all eight live collections.
+- The interface's view model is extracted to `src/readers/collectionViewModel.ts`
+  so a reader can produce it directly, and market history is derived from the
+  ownership chain in `src/readers/overlayMarketEvents.ts`.
+- Nothing renders from the overlay yet. The application is stable and every
+  displayed value still comes from GorillaPool and the derived reader.
+- 186 application tests, 36 backend tests, typecheck, script self-test, and the
   production build all pass.
 - A complete image lifecycle passes on current code: mint, listing, purchase,
   owner update, and creator approval, including 126 KB BEEF submissions.
@@ -690,28 +700,42 @@ Verified state as of 2026-08-02, end of session:
 Implement the next phase:
 
 The direction is to read from the overlay and keep the current reader only as a
-fallback, for the reasons in "Why reads should move to the overlay". Four things
-stand in the way, in the order they should be taken.
+fallback, for the reasons in "Why reads should move to the overlay". Reading is
+now fast enough to render from, so the remaining work is the migration itself,
+in this order.
 
-1. **Upgrade proofs after confirmation.** A record submitted live is stored as
+1. **Finish the view-model mapper.** Market events and the ownership chain are
+   done. What remains is the update timeline with its creator verdicts, which
+   needs the same epoch and approval logic the projection already applies
+   internally, and the fields carried in MAP: name, mint text, mint link, and
+   timestamp. No further requests are required, and none of this is deployed
+   code, so it carries no release risk.
+2. **Render from the overlay with fallback.** Collection and ad views read the
+   projection and fall back to the current reader on an empty result, an error,
+   or a timeout, behind a loading state. Fallback is chosen per collection
+   rather than per field: a view should always be attributable to one source,
+   because a mixed view makes a divergence nearly impossible to diagnose. This
+   is the first change a visitor would notice.
+3. **Serve creatives from the same response.** Removes the one-block window in
+   which a new image ad is invisible to embeds and agents, and removes the
+   content host from the render path.
+4. **Index the resolver.** Replace `findAllRecords` with queries by collection
+   and ad origin, and retain resolved current state alongside the evidence. This
+   changes nothing a reader receives and matters more as the namespace grows
+   than it does at eight collections.
+5. **Simplify the public submission.** Once nothing reads from GorillaPool, the
+   exact-outpoint poll after broadcast has no job and the submission becomes a
+   fire-and-forget txid. This falls out of step two rather than being separate
+   work.
+6. **Upgrade proofs after confirmation.** A record submitted live is stored as
    unconfirmed BEEF and nothing re-ingests it once its block lands, so the node
-   accumulates evidence that proves ancestry but not inclusion. That undercuts
-   the SPV argument for reading from it. Reconciliation already fetches
-   confirmed proofs, so this is a pass that re-submits proof-anchored BEEF for
-   records the node holds unconfirmed.
-2. **Serve creatives from BEEF.** Closes the one-block window during which a new
-   image ad is invisible to embeds and agents, and removes the content-host
-   dependency from the render path. The derived reader should also stop failing
-   an entire ad when creative bytes are missing, which is a worthwhile fix on
-   its own.
-3. **Read overlay-first with fallback on empty.** Fallback must trigger on an
-   empty overlay result as well as on an error, because a node that never
-   ingested a record answers truthfully with nothing and rendering that as
-   absence would be worse than the lag it replaces.
-4. **Federate.** Discovery is the last dependency that fallback cannot cover:
-   an Adinal sold outside this application reaches the node only through
+   accumulates evidence proving ancestry but not inclusion. Reconciliation
+   already fetches confirmed proofs, so this is a pass that re-submits
+   proof-anchored BEEF for records held unconfirmed.
+7. **Federate.** Discovery is the last dependency fallback cannot cover: an
+   Adinal sold outside this application reaches the node only through
    reconciliation against GorillaPool. SHIP, SLAP, and GASP remove that, and
-   they need a second node running `tm_adinals`.
+   need a second node running `tm_adinals`.
 
 Alongside those: keep scheduled `npm run overlay:shadow` rounds against the CARS
 endpoint and retain divergence reports; watch the CARS balance, since top-ups
