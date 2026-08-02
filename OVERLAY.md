@@ -784,11 +784,14 @@ that never ran. The comparison module deliberately avoids importing
 
 The first live shadow read matched, reporting collection
 `55acb61e975b1cd6d530c3519055ee57b68bf7ab251ac6fb0241b06261942c9b_0` in 4,318
-milliseconds against the deployed CARS node. The two reads run sequentially so
-that a failed baseline skips the overlay entirely, so that figure is both round
-trips plus any cold start in the derived reader. It is background work today;
-before stage two puts either read on the render path, the slower half needs
-identifying.
+milliseconds against the deployed CARS node. The second matched the
+Metanet-published collection
+`541cbf83d45fb2f33c6fb555ce6cf506d63a1a8063ed7a5b940cf101aa224d86_0` in 1,366
+milliseconds, so the first figure carried a cold start in the derived reader
+rather than describing steady state. The two reads run sequentially, letting a
+failed baseline skip the overlay entirely, so either number is both round trips
+combined. That is acceptable for background work; before stage two puts either
+read on the render path, the slower half still needs identifying.
 
 **Stage 2, not started: overlay-first hydration.** Ad and collection detail
 views read from the overlay and fall back to the current reader. The fallback
