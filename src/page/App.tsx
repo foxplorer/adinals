@@ -194,7 +194,7 @@ type Ad = {
 type RecentAdAction = {
   label: string
   txid: string
-  indexStatus: 'submitting' | 'indexed' | 'delayed'
+  indexStatus: 'submitting' | 'indexed' | 'awaiting-index' | 'unavailable'
   broadcastStatus: 'accepted' | 'uncertain'
   overlayStatus?: OverlayReceiptStatus
   placement: 'creative' | 'sale'
@@ -750,7 +750,7 @@ type Receipt = {
   label: string
   txid: string
   outpoint: string
-  indexStatus: 'submitting' | 'indexed' | 'delayed'
+  indexStatus: 'submitting' | 'indexed' | 'awaiting-index' | 'unavailable'
   broadcastStatus: 'accepted' | 'uncertain'
   overlayStatus?: OverlayReceiptStatus
   hasMedia: boolean
@@ -778,7 +778,9 @@ function RecentAdActionLine({ action }: { action: RecentAdAction }) {
           ? 'Broadcast · submitting to index…'
           : action.indexStatus === 'indexed'
             ? 'Broadcast · indexed'
-            : 'Broadcast · index submission delayed'}
+            : action.indexStatus === 'awaiting-index'
+              ? 'Broadcast · submitted, public index pending'
+              : 'Broadcast · index submission unavailable'}
       </small>
       {action.overlayStatus && <small>Overlay · {action.overlayStatus}</small>}
     </span>
@@ -823,7 +825,9 @@ function ReceiptLine({ receipt, onDismiss }: { receipt: Receipt; onDismiss: () =
               ? 'submitting index…'
               : receipt.indexStatus === 'indexed'
                 ? 'indexed'
-                : 'index delayed'}
+                : receipt.indexStatus === 'awaiting-index'
+                  ? 'submitted · public index pending'
+                  : 'index submission unavailable'}
         </span>
         <a className="ads-link" href={`${WOC_TX}/${receipt.txid}`} target="_blank" rel="noreferrer">
           transaction ↗
@@ -1443,10 +1447,10 @@ export function AdLab() {
 
       try {
         const exactOutpoint = result.outpoint ?? `${result.txid}_0`
-        const indexed = await submitToIndexer(result.txid, exactOutpoint)
+        const indexStatus = await submitToIndexer(result.txid, exactOutpoint)
         setReceipt((current) =>
           current && current.txid === result.txid
-            ? { ...current, indexStatus: indexed ? 'indexed' : 'delayed' }
+            ? { ...current, indexStatus }
             : current
         )
         if (adAction) {
@@ -1457,7 +1461,7 @@ export function AdLab() {
                   ...current,
                   [adAction.origin]: {
                     ...existing,
-                    indexStatus: indexed ? 'indexed' : 'delayed',
+                    indexStatus,
                   },
                 }
               : current

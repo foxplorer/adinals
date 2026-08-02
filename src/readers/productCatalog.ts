@@ -59,7 +59,7 @@ export const SUB_TYPE: Record<RecordKind, string> = {
  * Retried, because the first attempt often lands before the transaction has
  * propagated far enough for the indexer to fetch it.
  */
-const indexerSubmissions = new Map<string, Promise<boolean>>()
+const indexerSubmissions = new Map<string, Promise<IndexerSubmissionOutcome>>()
 
 type IndexerSubmissionOptions = {
   fetcher?: typeof fetch
@@ -68,14 +68,25 @@ type IndexerSubmissionOptions = {
   sleep?: (delayMs: number) => Promise<void>
 }
 
+/**
+ * The outcome of asking GorillaPool to index a broadcast transaction.
+ *
+ * `awaiting-index` is routine rather than a fault: the submission was accepted
+ * and the record simply is not public yet. GorillaPool often withholds a record
+ * until its transaction confirms, and the retry window here is around thirty
+ * seconds against a roughly ten-minute block interval. `unavailable` is the
+ * genuine failure, where no submission was accepted at all.
+ */
+export type IndexerSubmissionOutcome = 'indexed' | 'awaiting-index' | 'unavailable'
+
 export function submitToIndexer(
   txid: string,
   outpoint: string,
   options: IndexerSubmissionOptions = {},
-): Promise<boolean> {
+): Promise<IndexerSubmissionOutcome> {
   const parsed = parseProtocolOutpoint(outpoint)
   if (!/^[0-9a-f]{64}$/i.test(txid) || !parsed || parsed.txid !== txid.toLowerCase()) {
-    return Promise.resolve(false)
+    return Promise.resolve('unavailable')
   }
   const fetcher = options.fetcher ?? fetch
   const retryDelaysMs = options.retryDelaysMs ?? [0, 3_000, 8_000, 20_000]
@@ -103,8 +114,9 @@ export function submitToIndexer(
   const existing = indexerSubmissions.get(parsed.normalized)
   if (existing) return existing
 
-  const submission = (async () => {
-    if (await isIndexed()) return true
+  const submission = (async (): Promise<IndexerSubmissionOutcome> => {
+    if (await isIndexed()) return 'indexed'
+    let accepted = false
     for (const delay of retryDelaysMs) {
       if (delay) await sleep(delay)
       try {
@@ -117,13 +129,16 @@ export function submitToIndexer(
         // so before its transaction source has propagated, so never treat the
         // POST itself as proof that public lookup is ready.
         if (!response.ok) continue
+        accepted = true
         if (settleDelayMs) await sleep(settleDelayMs)
-        if (await isIndexed()) return true
+        if (await isIndexed()) return 'indexed'
       } catch {
         // Not visible yet — the next attempt decides.
       }
     }
-    return false
+    // An accepted submission that is not yet public is the ordinary case for an
+    // unconfirmed transaction, and must not read as a failed one.
+    return accepted ? 'awaiting-index' : 'unavailable'
   })().finally(() => indexerSubmissions.delete(parsed.normalized))
 
   indexerSubmissions.set(parsed.normalized, submission)

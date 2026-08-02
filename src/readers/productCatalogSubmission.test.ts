@@ -23,7 +23,7 @@ test('a successful submission is retried until the exact output is indexed', asy
     retryDelaysMs: [0, 0],
     settleDelayMs: 0,
   })
-  assert.equal(indexed, true)
+  assert.equal(indexed, 'indexed')
   assert.equal(posts, 2)
   assert.equal(lookups, 3)
 })
@@ -40,7 +40,8 @@ test('submission never reports indexed from HTTP 204 alone', async () => {
     retryDelaysMs: [0, 0, 0],
     settleDelayMs: 0,
   })
-  assert.equal(indexed, false)
+  // Accepted but not yet public is the ordinary unconfirmed case.
+  assert.equal(indexed, 'awaiting-index')
   assert.equal(posts, 3)
 })
 
@@ -70,4 +71,37 @@ test('a known spend with a missing successor is marked as incomplete', async () 
   } finally {
     globalThis.fetch = originalFetch
   }
+})
+
+test('a submission GorillaPool never accepts is reported as unavailable', async () => {
+  let posts = 0
+  const fetcher = async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    if (init?.method === 'POST') {
+      posts += 1
+      return new Response(null, { status: 503 })
+    }
+    return new Response(null, { status: 404 })
+  }
+
+  const outcome = await submitToIndexer('e'.repeat(64), `${'e'.repeat(64)}_0`, {
+    fetcher: fetcher as typeof fetch,
+    retryDelaysMs: [0, 0],
+    settleDelayMs: 0,
+  })
+  assert.equal(outcome, 'unavailable')
+  assert.equal(posts, 2)
+})
+
+test('a transport failure on every attempt is reported as unavailable', async () => {
+  const fetcher = async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    if (init?.method === 'POST') throw new Error('network down')
+    return new Response(null, { status: 404 })
+  }
+
+  const outcome = await submitToIndexer('f'.repeat(64), `${'f'.repeat(64)}_0`, {
+    fetcher: fetcher as typeof fetch,
+    retryDelaysMs: [0],
+    settleDelayMs: 0,
+  })
+  assert.equal(outcome, 'unavailable')
 })
