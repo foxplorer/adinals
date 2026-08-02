@@ -825,10 +825,24 @@ Image collections compound the problem because the same large BEEF is returned
 by several queries. Deduplicating hydrated transactions by transaction ID in the
 client would avoid transferring a 188 KB cover more than once.
 
-Consolidating those queries is a prerequisite for stage two rather than an
-optimisation to follow it. Parity is the safety net: a projection rebuilt from
-`collectionLive` must produce byte-identical results to the current one, and the
-existing suite proves that without new tests.
+That consolidation is now implemented. A `collectionProjection` lookup returns
+full history evidence for every winning mint in a collection, deliberately
+unlike `collectionLive`, which answers the narrower question of display
+eligibility and would omit pending proposals and expired collections. Release
+`9931d359` carries it on the hosted node.
+
+Client-side the ownership chain is rebuilt by following input-0 links rather
+than by filtering, because one response interleaves every ad in the collection.
+Each output is still hydrated, txid-checked, and signature-checked exactly as
+before, and the per-ad path is retained for a node without the query.
+
+`npm run overlay:projection-diff` compares the two paths against each other
+rather than against a public reader, so a stale node cannot mask a difference.
+All eight collections on the hosted node match exactly, and the measured
+improvement against it is substantial: a six-ad collection fell from 7,012 to
+1,366 milliseconds, the Billboards image collection from 9,442 to 2,321, and a
+five-ad collection from 2,316 to 567. Overlay reads are now comparable to the
+derived reader on text collections and faster on several.
 
 ## Reader migration plan
 
