@@ -1,5 +1,3 @@
-import type { MarketEvent } from './productCatalog.ts'
-
 /**
  * The shapes the collection interface renders.
  *
@@ -8,6 +6,17 @@ import type { MarketEvent } from './productCatalog.ts'
  * sources for one model instead of two parallel models.
  */
 export type CreativeFormat = 'text' | 'image'
+
+/** A transaction on an ad's spend chain, rather than a new signed record. */
+export type MarketEvent = {
+  kind: 'listed' | 'purchased' | 'delisted' | 'transferred'
+  outpoint: string
+  previousOwner: string
+  owner: string
+  price: number | null
+  height: number | null
+  idx: number
+}
 
 export type Collection = {
   origin: string

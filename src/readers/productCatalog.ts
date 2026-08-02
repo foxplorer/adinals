@@ -189,15 +189,8 @@ export type Row = {
   chainIncomplete: boolean
 }
 
-export type MarketEvent = {
-  kind: 'listed' | 'purchased' | 'delisted' | 'transferred'
-  outpoint: string
-  previousOwner: string
-  owner: string
-  price: number | null
-  height: number | null
-  idx: number
-}
+export type { MarketEvent } from './collectionViewModel.ts'
+import type { MarketEvent } from './collectionViewModel.ts'
 
 function validSigmaSigner(value: unknown): string {
   if (!Array.isArray(value)) return ''
