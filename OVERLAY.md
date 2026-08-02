@@ -647,98 +647,49 @@ Read OVERLAY.md, README.md, and BRC100_COLLECTION_MATRIX.md completely first,
 then inspect git status. Preserve existing work and keep all three documents
 current. Do not commit, push, or deploy unless explicitly requested.
 
-Verified state as of 2026-08-02:
+Verified state as of 2026-08-02, end of session:
 
-- Local LARS uses http://localhost:8080 with tm_adinals and ls_adinals.
-- The confirmed production v3 discovery set contains 5 collections, 18 mint
-  origins, 38 lifecycle transitions, 12 sibling updates, and 8 decisions.
-- A clean namespace replay admitted 69 transactions with zero failures or
-  unresolved confirmed spend links.
-- An idempotent replay reported 0 new, 69 already present, and 0 failures.
-- The populated semantic smoke test passes, including both retained complete
-  sale/update/approval histories and a 19-output collectionLive proof set.
-- All 32 application test files, all 6 backend test files, TypeScript, and the
-  production Vite build pass.
-- Large-inscription parsing and distinct mint creator/spend-lock owner handling
-  are covered by regression tests.
-- `src/overlay/client.ts` implements reusable binary submit and hydrated,
-  txid-checked lookup calls.
-- Accepted collection, mint, update, decision, listing, purchase, and cancel
-  broadcasts enqueue their locally verified Atomic BEEF. Updates require exact
-  visibility of outputs 0 and 1.
-- IndexedDB version 5 persists provisional/indexed/retrying/failed overlay
-  delivery state; delayed lookup, duplicates, outage-after-broadcast,
-  permanent rejection, and startup retry are automated passes.
-- Local Vite defaults to localhost:8080, while production overlay delivery is
-  disabled unless `VITE_ADINALS_OVERLAY_URL` is explicitly configured.
-- Local browser requests now use the same-origin `/adinals-overlay` Vite proxy
-  to port 8080, and publication awaits its initial delivery result. Focused
-  publication/queue tests and the production build pass.
-- Local LARS is running with only its required three containers. Health,
-  registration, populated smoke replay, and a direct reusable-client duplicate
-  submit/exact lookup pass.
-- The first real browser attempt minted production Ad #4 at
-  `4eeb833ffd469fb9952385d7659f9c1a63fc36658c9d2c3d7ab2298ebab4c7e0_0`.
-  Wallet broadcast and GorillaPool/public-reader visibility passed, but LARS
-  exact lookup stayed empty and its logs showed no `/submit`. Ad #4 was later
-  recovered by confirmed backfill; the subsequent Ad #5 retry passed the live
-  wallet-to-overlay canary.
-- Ad #5 at `b660c95f9e38ee369769bf7c9b89efb4f45899f048a3c9133175c26dc23ba91c_0`
-  passed the repaired unconfirmed browser path: Brave sent its 2,329-byte BEEF
-  through the Vite proxy, LARS returned 200 in 573 ms, and exact hydrated output
-  0 became visible without waiting for confirmation.
-- The main product receipt now displays independent local-overlay transitions
-  and explicitly reports `not-queued` when the enabled client returns no queue
-  record. Startup also reconstructs missing queue entries from accepted
-  publication records plus retained Atomic BEEF, but a second hard refresh did
-  not recover this live mint, so that browser join remains under diagnosis. All
-  32 application test files and the production build pass afterward.
-- A scoped confirmed-only backfill found 1 collection, 4 public mints, 9
-  lifecycle transitions, 3 updates, and 3 decisions; 16 confirmed transactions
-  were already present with 0 failures. The still-unconfirmed Ad #4 was skipped.
-- After confirmation, rerunning that scope admitted Ad #4 as the only new
-  transaction; exact output 0 is now visible with hydrated BEEF and 0 failures.
-- `src/readers/overlayReader.ts` derives verified collection membership,
-  ownership history, current owner, owner epoch, listing, proposal state,
-  creative, expiration, and display eligibility from overlay BEEF formulas.
-- Four consecutive `npm run overlay:parity` runs pass against the current public
-  reader for all 5 collections and 20 canonical ads, including image byte
-  hashes. Both live canary mints are confirmed and included. The two complete
-  lifecycle vectors also pass deep history parity.
-- `npm run overlay:reconcile` is implemented and automated. Four confirmed-only
-  live namespace scans each checked all 20 current states with 0 submissions
-  needed and 0 failures.
-- `npm run overlay:shadow -- --rounds=N --interval=<seconds>` runs both checks
-  per round, writes `reports/overlay-shadow/` JSON plus `history.jsonl`, retains
-  full transcripts only for failed commands, and exits non-zero on any
-  divergent or unavailable round. Two scheduled rounds and a simulated
-  failing-overlay round were both verified.
-- The confirmed dry-run inventory is now 5 collections, 20 mints, 38 lifecycle
-  transitions, 12 updates, and 8 decisions, that is 71 transactions, with no
-  unresolved confirmed spend links.
-- The CARS shadow node is deployed at
+- The CARS shadow node is live at
   `https://backend.93913ed6b421f18f80e669c61239a690.projects.babbage.systems`,
-  release `6cbe8de96aea771de80508ad368f51ae`. It replayed 70 of 71 confirmed
-  transactions, received the unconfirmed Ad #5 by relay, and passes full shadow
-  rounds against the public reader. Burn is 108 satoshis per five minutes and
-  single top-ups are capped at 10,000 satoshis.
-- The cross-origin browser canary passed: a Metanet Desktop collection,
-  `541cbf83d45fb2f33c6fb555ce6cf506d63a1a8063ed7a5b940cf101aa224d86_0`,
-  delivered its BEEF from Brave to the hosted node with no proxy and reached
-  `indexed`. The local LARS node holds nothing for it, which proves the routing.
-- `.env.production` is committed so a host without dashboard environment
-  variables builds with the CARS endpoint; `.env` overrides it locally.
-- Collection publication no longer requires a single input. The anchor rule
-  lives in `src/actions/collectionAnchor.ts` and checks input 0 against the
-  signed anchor outpoint, which unblocked Metanet Desktop.
-- All 33 application test files (144 tests), 33 backend tests, backend
-  typecheck, the script self-test, and the production Vite build pass.
+  project `93913ed6b421f18f80e669c61239a690`, release `6cbe8de9`. It holds the
+  replayed namespace plus every live write since, and passes clean shadow rounds
+  against the public reader.
+- Browser overlay delivery targets that node in development and in production
+  builds, through `.env` and the committed `.env.production`. Cross-origin
+  binary `/submit` works with no proxy.
+- Reads have not moved. Every rendered value still comes from GorillaPool and
+  the derived reader; the overlay is a write path plus a background comparison.
+- Local LARS still runs on `http://localhost:8080` but has deliberately diverged:
+  it holds only the confirmed backfill and none of the day's live writes.
+- The namespace is now 6 collections, 22 mints, 38 lifecycle transitions, 14
+  updates, and 9 decisions, all matching the public reader.
+- Three Metanet Desktop incompatibilities were found and fixed, none of which
+  Yours Wallet would have surfaced: a collection audit that required exactly one
+  input, a `createSignature` request that sent `data` alongside
+  `hashToDirectlySign`, and anchor positions read from fixed indexes.
+- Both wallets' signing conformance is measured rather than assumed. Yours
+  honours a supplied hash in every case; Metanet honours it alone but prefers
+  `data` when both arrive.
+- Two classes of fund stranding are closed: a refused rehearsal now releases its
+  reserved funding, and the developer panel exposes the wallet-toolbox spec op
+  that releases no-send actions whose references were lost. That recovered
+  roughly 909,000 satoshis of reserved balance.
+- Proven live on the hosted node: collection, mint, update, purchase, and
+  creator decision, including two full cross-wallet cycles bought in Yours and
+  approved in Metanet, and one large image collection cover costing about eleven
+  thousand satoshis whose 129 KB BEEF the browser submitted successfully.
+- Stage one overlay shadow reads run in the product, comparing the configured
+  overlay against the rendered reader on every collection view, and match.
+- 178 application tests, 33 backend tests, typecheck, script self-test, and the
+  production build all pass.
+- Untested: a large image mint, a large image update, and overlay-first reads.
 
 Implement the next phase:
 
-1. Keep running scheduled `npm run overlay:shadow` rounds against both the local
-   node and the CARS endpoint, and preserve the exact divergence reports;
-   investigate any non-clean round before moving on.
+1. Keep running scheduled `npm run overlay:shadow` rounds against the CARS
+   endpoint and preserve the exact divergence reports; investigate any non-clean
+   round before moving on. The local node is no longer a mirror and comparing
+   the two proves nothing until a second peer makes GASP synchronization real.
 2. Watch the CARS balance. Top-ups are capped at 10,000 satoshis each and the
    CLI reports success even when the cloud rejects the payment, so read the
    balance back after every attempt. An exhausted node degrades browser
@@ -835,7 +786,10 @@ combined. That is acceptable for background work; before stage two puts either
 read on the render path, the slower half still needs identifying.
 
 **Stage 2, not started: overlay-first hydration.** Ad and collection detail
-views read from the overlay and fall back to the current reader. The fallback
+views read from the overlay and fall back to the current reader. Nothing on the
+site is populated from the overlay today: the CARS node receives every write and
+is compared on every collection view, while every rendered value still comes
+from GorillaPool and the derived reader. The fallback
 must trigger on an *empty* result as well as an error, because an overlay only
 knows what was submitted or backfilled into it and cannot discover a record it
 never ingested. Rendering a never-ingested record as missing would be worse than
@@ -845,12 +799,31 @@ the lag it replaces.
 come from the overlay once its ingestion has proven complete over a longer
 period, with the current reader retained as fallback.
 
-Two decisions already fixed. Creative images continue to load from public
-content hosts such as ordfs and GorillaPool rather than being reconstructed from
-BEEF; the overlay supplies the content hash that makes those bytes verifiable,
-which is the property that matters. And a lapsed CARS balance must degrade reads
-silently to the fallback path, never to an error, because the node's funding is
-an operational detail rather than a protocol one.
+One decision stands and one has been revised.
+
+A lapsed CARS balance must still degrade reads silently to the fallback path
+rather than to an error, because the node's funding is an operational detail
+rather than a protocol one.
+
+The image decision has changed, though the case is narrower than it first
+appeared. The application already shows the creator a local preview built from
+the bytes they selected, so their own view is never blank. Other viewers have no
+such fallback: an embed, a second browser, or another person must fetch the
+creative from a public content host.
+
+A live image collection cover showed the size of that window. Well after
+creation, and with the transaction still unconfirmed, GorillaPool's content
+endpoint reported the inscription as not found and ordfs returned an error,
+while the hosted overlay already held the complete 129 KB BEEF and therefore the
+image itself. Whether public hosts are merely propagating slowly or waiting for
+confirmation is not established by that single observation, and the creator's
+local preview hides the difference from the person best placed to notice it.
+
+Creative bytes ride inside the BEEF the overlay already returns, so serving them
+from there closes the window for third-party viewers while keeping the hash
+check that made the original decision attractive. Stage two should therefore
+render creatives from overlay BEEF when available and fall back to the public
+content hosts, rather than the reverse.
 
 ## Collection anchor position and wallet funding
 
