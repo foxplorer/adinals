@@ -33,6 +33,7 @@ import {
   signDerivedP2PKHInput,
 } from '../wallet/actionSigning.ts'
 import { calculateSigmaAnchorReserve } from './sigmaAnchorReserve.ts'
+import { releaseOnFailure } from './noSendGuard.ts'
 
 const protocolID: WalletProtocol = [1, ADINALS_NAMESPACE.keyProtocol]
 
@@ -286,19 +287,21 @@ export async function updateAdinal(
   }))
   const created = updateAttempt.created
   const completed = updateAttempt.completed
-  const transaction = Transaction.fromAtomicBEEF(completed.tx)
-  if (transaction.outputs[0]?.lockingScript.toHex() !== successorScript.toHex() || transaction.outputs[1]?.lockingScript.toHex() !== signedRecord.toHex()) {
-    throw new Error('Wallet changed the mandatory update output layout.')
-  }
-  const verification = verifyAdinalRecordScript(transaction.outputs[1]!.lockingScript, unsigned, source, map)
-  if (!verification.valid) throw new Error(`Adinals update verification failed: ${verification.errors.join('; ')}`)
-  return {
-    kind: 'update', status: 'rehearsed', broadcast: false, txid: completed.txid,
-    outpoint: `${completed.txid}_1`, stateOutpoint: `${completed.txid}_0`, rawtx: transaction.toHex(),
-    atomicBeef: completed.tx, basket, protocolID, ownerKeyID: input.ownerKeyID, signerKeyID: input.ownerKeyID,
-    actionReference: created.signableTransaction?.reference,
-    ownerAddress, map, verification, verifierRevision: COLLECTION_VERIFIER_REVISION,
-  }
+  return await releaseOnFailure(wallet, created.signableTransaction?.reference, () => {
+    const transaction = Transaction.fromAtomicBEEF(completed.tx)
+    if (transaction.outputs[0]?.lockingScript.toHex() !== successorScript.toHex() || transaction.outputs[1]?.lockingScript.toHex() !== signedRecord.toHex()) {
+      throw new Error('Wallet changed the mandatory update output layout.')
+    }
+    const verification = verifyAdinalRecordScript(transaction.outputs[1]!.lockingScript, unsigned, source, map)
+    if (!verification.valid) throw new Error(`Adinals update verification failed: ${verification.errors.join('; ')}`)
+    return {
+      kind: 'update', status: 'rehearsed', broadcast: false, txid: completed.txid,
+      outpoint: `${completed.txid}_1`, stateOutpoint: `${completed.txid}_0`, rawtx: transaction.toHex(),
+      atomicBeef: completed.tx, basket, protocolID, ownerKeyID: input.ownerKeyID, signerKeyID: input.ownerKeyID,
+      actionReference: created.signableTransaction?.reference,
+      ownerAddress, map, verification, verifierRevision: COLLECTION_VERIFIER_REVISION,
+    }
+  })
 }
 
 export async function listAdinal(
@@ -328,14 +331,16 @@ export async function listAdinal(
   }))
   const created = listingAttempt.created
   const completed = listingAttempt.completed
-  const transaction = Transaction.fromAtomicBEEF(completed.tx)
-  if (!transaction.outputs[0] || !OrdLock.decode(transaction.outputs[0].lockingScript)) throw new Error('Wallet did not return the expected OrdLock listing.')
-  return {
-    kind: 'listing', status: 'rehearsed', broadcast: false, txid: completed.txid, outpoint: `${completed.txid}_0`,
-    rawtx: transaction.toHex(), atomicBeef: completed.tx, basket, protocolID, ownerKeyID: input.ownerKeyID,
-    actionReference: created.signableTransaction?.reference,
-    ownerAddress, verifierRevision: COLLECTION_VERIFIER_REVISION,
-  }
+  return await releaseOnFailure(wallet, created.signableTransaction?.reference, () => {
+    const transaction = Transaction.fromAtomicBEEF(completed.tx)
+    if (!transaction.outputs[0] || !OrdLock.decode(transaction.outputs[0].lockingScript)) throw new Error('Wallet did not return the expected OrdLock listing.')
+    return {
+      kind: 'listing', status: 'rehearsed', broadcast: false, txid: completed.txid, outpoint: `${completed.txid}_0`,
+      rawtx: transaction.toHex(), atomicBeef: completed.tx, basket, protocolID, ownerKeyID: input.ownerKeyID,
+      actionReference: created.signableTransaction?.reference,
+      ownerAddress, verifierRevision: COLLECTION_VERIFIER_REVISION,
+    }
+  })
 }
 
 /**
@@ -388,6 +393,7 @@ export async function cancelAdinalListing(
   }))
   const created = cancellationAttempt.created
   const completed = cancellationAttempt.completed
+  return await releaseOnFailure(wallet, created.signableTransaction?.reference, () => {
   const transaction = Transaction.fromAtomicBEEF(completed.tx)
   if (transaction.outputs[0]?.lockingScript.toHex() !== returnScript.toHex()) {
     throw new Error('Wallet changed the mandatory cancellation output.')
@@ -401,7 +407,7 @@ export async function cancelAdinalListing(
     basket, protocolID, ownerKeyID: input.ownerKeyID, ownerAddress,
     actionReference: created.signableTransaction?.reference,
     verifierRevision: COLLECTION_VERIFIER_REVISION,
-  }
+  }  })
 }
 
 export async function buyAdinal(
@@ -446,6 +452,7 @@ export async function buyAdinal(
   }))
   const created = purchaseAttempt.created
   const completed = purchaseAttempt.completed
+  return await releaseOnFailure(wallet, created.signableTransaction?.reference, () => {
   const transaction = Transaction.fromAtomicBEEF(completed.tx)
   if (transaction.outputs[0]?.lockingScript.toHex() !== buyerScript.toHex() || transaction.outputs[1]?.lockingScript.toHex() !== payoutScript.toHex()) {
     throw new Error('Wallet changed the mandatory purchase output layout.')
@@ -455,5 +462,5 @@ export async function buyAdinal(
     rawtx: transaction.toHex(), atomicBeef: completed.tx, basket, protocolID, ownerKeyID, ownerAddress,
     actionReference: created.signableTransaction?.reference,
     verifierRevision: COLLECTION_VERIFIER_REVISION,
-  }
+  }  })
 }
