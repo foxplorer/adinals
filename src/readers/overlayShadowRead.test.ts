@@ -97,3 +97,22 @@ test('a slow reference times out without consulting the overlay', async () => {
   assert.equal(result.status, 'reference-unavailable')
   assert.equal(overlayCalls, 0)
 })
+
+test('each half reports its own duration', async () => {
+  const result = await readOverlayShadowComparison(origin, {
+    overlay: async () => { await new Promise((resolve) => setTimeout(resolve, 30)); return overlay() },
+    reference: async () => { await new Promise((resolve) => setTimeout(resolve, 60)); return reference() },
+  })
+  assert.equal(result.status, 'match')
+  assert.ok(result.referenceMs >= 55, `reference ${result.referenceMs}ms`)
+  assert.ok(result.overlayMs >= 25, `overlay ${result.overlayMs}ms`)
+  assert.ok(result.overlayMs < result.referenceMs)
+})
+
+test('a skipped overlay read reports no overlay time', async () => {
+  const result = await readOverlayShadowComparison(origin, {
+    overlay: async () => overlay(),
+    reference: async () => { throw new Error('reader 503') },
+  })
+  assert.equal(result.overlayMs, 0)
+})

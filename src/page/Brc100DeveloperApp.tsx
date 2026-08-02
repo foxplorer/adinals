@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   AdinalsActionError,
   createAdinalsCollection,
@@ -16,9 +16,13 @@ import { reconcileCollectionPublication } from '../actions/publicationReconcilia
 import { ADINALS_NAMESPACE, COLLECTION_PUBLISH_ENABLED } from '../config/environment'
 import { downloadCollectionFixture } from '../fixtures/collectionFixture.ts'
 import {
+  forgetCollectionRehearsal,
+  listCollectionRehearsals,
   loadLatestCollectionRehearsal,
   saveCollectionRehearsal,
+  type RetainedCollectionRehearsal,
 } from '../fixtures/rehearsalStore.ts'
+import { releaseCollectionRehearsal } from '../actions/releaseCollectionRehearsal.ts'
 import {
   loadCollectionPublicationAttempt,
   saveCollectionPublicationAttempt,
@@ -151,6 +155,39 @@ function CollectionWorkspace() {
   const [publicationUnderstood, setPublicationUnderstood] = useState(false)
   const [publicationAttempt, setPublicationAttempt] = useState<CollectionPublicationAttempt | null>(null)
   const [reconcilingPublication, setReconcilingPublication] = useState(false)
+  const [retainedRehearsals, setRetainedRehearsals] = useState<RetainedCollectionRehearsal[]>([])
+  const [releasing, setReleasing] = useState('')
+  const [releaseNote, setReleaseNote] = useState('')
+
+  const refreshRetainedRehearsals = useCallback(async () => {
+    if (!session) return
+    setRetainedRehearsals(await listCollectionRehearsals(session.identityKey))
+  }, [session])
+
+  useEffect(() => {
+    void refreshRetainedRehearsals()
+  }, [refreshRetainedRehearsals])
+
+  /**
+   * Releases the wallet inputs a rehearsal reserved. A no-send action keeps its
+   * funding UTXO and its no-send change unspendable until it is aborted, so an
+   * abandoned rehearsal can lock far more than its own anchor reserve.
+   */
+  const releaseRehearsal = async (rehearsal: AdinalsCollectionRehearsal) => {
+    if (!wallet) return
+    setReleasing(rehearsal.outpoint)
+    setReleaseNote('')
+    try {
+      const released = await releaseCollectionRehearsal(wallet, rehearsal)
+      if (released.childAborted) await forgetCollectionRehearsal(rehearsal.outpoint)
+      setReleaseNote(released.notes.join(', ') || 'The wallet reported nothing to release.')
+      await refreshRetainedRehearsals()
+    } catch (releaseError) {
+      setReleaseNote(releaseError instanceof Error ? releaseError.message : String(releaseError))
+    } finally {
+      setReleasing('')
+    }
+  }
 
   useEffect(() => {
     if (!session) return
@@ -235,6 +272,10 @@ function CollectionWorkspace() {
             map: audit.candidate.map,
             verification: audit.candidate.verification,
             verifierRevision: COLLECTION_VERIFIER_REVISION,
+            // Recovery is read-only and never learns a wallet's opaque abort
+            // handles, so a recovered candidate cannot be released by reference.
+            actionReference: '',
+            anchorReference: '',
           }
           await saveCollectionRehearsal(session.identityKey, recovered)
           setResult(recovered)
@@ -401,6 +442,45 @@ function CollectionWorkspace() {
 
   return (
     <div className="collection-workspace-stack">
+      <section className="collection-recovery" aria-label="Retained no-send rehearsals">
+        <div>
+          <span className="phase-badge">Reserved wallet funding</span>
+          <h3>Retained collection rehearsals</h3>
+          <p>
+            A no-send rehearsal keeps its funding input and its no-send change reserved inside the wallet until it is
+            published or released, so an abandoned one can lock far more than its own anchor reserve. Releasing a
+            rehearsal aborts its collection action and then its anchor; it never touches a published collection.
+          </p>
+        </div>
+        {retainedRehearsals.length === 0 ? (
+          <p>No retained rehearsals for this identity.</p>
+        ) : (
+          <ul className="retained-rehearsals">
+            {retainedRehearsals.map(({ savedAt, result: rehearsal }) => (
+              <li key={rehearsal.outpoint}>
+                <code>{shortKey(rehearsal.outpoint)}</code>
+                <span>{rehearsal.map.name || 'Unnamed collection'}</span>
+                <span>{new Date(savedAt).toLocaleString()}</span>
+                {rehearsal.actionReference ? (
+                  <button
+                    type="button"
+                    className="ads-back ads-reject"
+                    disabled={releasing === rehearsal.outpoint}
+                    onClick={() => void releaseRehearsal(rehearsal)}
+                  >
+                    {releasing === rehearsal.outpoint ? 'Releasing…' : 'Release reserved funding'}
+                  </button>
+                ) : (
+                  <span>
+                    No retained abort reference. Release it from the wallet’s own action management if it offers one.
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {releaseNote && <p role="status">{releaseNote}</p>}
+      </section>
       <section className="collection-recovery" aria-label="No-send recovery">
         <div>
           <span className="phase-badge">Refresh recovery gate</span>

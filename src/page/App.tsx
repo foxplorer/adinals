@@ -1329,6 +1329,7 @@ export function AdLab() {
         // Every outcome is reported during the shadow period: a silent match is
         // indistinguishable from a comparison that never ran.
         const summary = `Overlay shadow read ${result.status} in ${result.durationMs}ms`
+          + ` (reader ${result.referenceMs}ms, overlay ${result.overlayMs}ms)`
         if (result.status === 'match') console.info(summary, result.origin)
         else console.warn(summary, result.origin, result.errors)
       })

@@ -15,6 +15,7 @@ import {
 } from '../actions/publishLifecycle.ts'
 import { publishRecoveredCollection } from '../actions/publishCollection.ts'
 import { recoverNoSendCollection } from '../actions/recovery.ts'
+import { releaseCollectionRehearsal } from '../actions/releaseCollectionRehearsal.ts'
 import {
   COLLECTION_PUBLISH_ENABLED,
   LIFECYCLE_PUBLISH_ENABLED,
@@ -179,7 +180,13 @@ export async function createCollection(
       rehearsal.outpoint,
       rehearsal.anchorOutpoint,
     )
-    if (!audit.candidate?.valid) throw new Error(audit.candidate?.errors.join('; ') || 'Wallet recovery could not verify the collection.')
+    if (!audit.candidate?.valid) {
+      // A refused rehearsal is never published, so its reserved inputs must go
+      // back to the wallet instead of sitting in an unspendable no-send action.
+      const released = await releaseCollectionRehearsal(keys.wallet, rehearsal)
+      const reason = audit.candidate?.errors.join('; ') || 'Wallet recovery could not verify the collection.'
+      throw new Error(`${reason}${released.notes.length ? ` Cleanup: ${released.notes.join(', ')}.` : ''}`)
+    }
     const preflight = await readCollectionNetworkPreflight(
       rehearsal.anchorTxid,
       rehearsal.txid,

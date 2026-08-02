@@ -47,6 +47,9 @@ export type AdinalsCollectionRehearsal = {
   map: AdinalsCollectionMap
   verification: CollectionScriptVerification
   verifierRevision: typeof COLLECTION_VERIFIER_REVISION
+  /** Wallet-local abort handles; excluded from exported fixtures. */
+  actionReference: string
+  anchorReference: string
 }
 
 export class AdinalsActionError extends Error {
@@ -265,6 +268,11 @@ export async function createAdinalsCollection(
       map,
       verification,
       verifierRevision: COLLECTION_VERIFIER_REVISION,
+      // Retained so a caller that refuses this rehearsal can release its
+      // reserved funding. These are wallet-local handles and never belong in an
+      // exported fixture.
+      actionReference: collectionReference,
+      anchorReference: anchorCreated.signableTransaction?.reference ?? '',
     }
   } catch (error) {
     // A completed no-send action is still abortable by its original reference.

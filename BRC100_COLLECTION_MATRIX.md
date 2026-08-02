@@ -70,6 +70,10 @@ change the Adinals transaction or authorization rules.
   became actionable after block confirmation.
 - Creator decision records indexed promptly once their referenced ownership
   transition was derivable.
+- A no-send action reserves its funding input and its no-send change until it is
+  published or aborted, while the wallet still counts both in its displayed
+  balance. One abandoned collection rehearsal can therefore make most of a
+  balance unspendable, which looks like a wallet fault and is not one.
 - Yours Wallet funds a collection by spending only the sized SIGMA anchor, while
   Metanet Desktop adds its own funding input after it. Both are protocol-valid:
   version 3 anchors the signature to the outpoint spent at input 0 and ignores

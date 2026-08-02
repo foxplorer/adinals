@@ -835,6 +835,32 @@ shapes. The helper deliberately imports nothing from `@1sat/templates` so it
 runs under Node's test runner, which cannot resolve that package's
 extensionless ESM chain.
 
+## Reserved wallet funding
+
+A refused collection rehearsal used to strand real satoshis. Every Adinals
+action is built as a no-send anchor and child pair, and a no-send action keeps
+its funding input *and its no-send change* reserved inside the wallet until the
+action is published or aborted. The wallet keeps counting those satoshis in its
+displayed balance while refusing to spend them, so one abandoned rehearsal that
+consumed a large funding output can lock most of a balance rather than only its
+few-hundred-satoshi anchor reserve.
+
+The lifecycle path already aborted on failure. Collections did not:
+`createAdinalsCollection` released its own internal failures, but a rehearsal
+refused by the audit that runs afterwards had no cleanup path, and the returned
+rehearsal did not carry the wallet's opaque abort handles.
+
+`AdinalsCollectionRehearsal` now retains `actionReference` and
+`anchorReference`, and `src/actions/releaseCollectionRehearsal.ts` releases the
+child before its anchor. That helper never throws, because it runs while another
+failure is already being reported and must not replace the original
+explanation. `publishCollection` calls it whenever the audit refuses a
+rehearsal and appends the outcome to the error. The developer panel also lists
+every retained rehearsal with a release control, and says plainly when an older
+candidate has no retained reference: recovery is read-only and never learns
+those handles, so such an action can only be released from the wallet's own
+interface. Wallet-local references stay out of exported fixtures.
+
 ## Admitted transaction coverage
 
 A shadow node is only useful if every kind of Adinals transaction reaches it, so

@@ -32,6 +32,9 @@ export type OverlayShadowReadResult = {
   status: OverlayShadowReadStatus
   errors: string[]
   durationMs: number
+  /** Time in each half, so a slow round trip names its own cause. */
+  referenceMs: number
+  overlayMs: number
 }
 
 export const OVERLAY_SHADOW_READ_EVENT = 'adinals-overlay-shadow-read'
@@ -71,6 +74,8 @@ export async function readOverlayShadowComparison(
   const startedAt = Date.now()
   const timeoutMs = options.timeoutMs ?? OVERLAY_SHADOW_READ_TIMEOUT_MS
   const reference = options.reference ?? readDerivedCollectionProjection
+  let referenceMs = 0
+  let overlayMs = 0
   const result = (status: OverlayShadowReadStatus, errors: string[]): OverlayShadowReadResult => ({
     origin,
     endpoint: options.endpoint ?? '',
@@ -78,21 +83,29 @@ export async function readOverlayShadowComparison(
     status,
     errors,
     durationMs: Date.now() - startedAt,
+    referenceMs,
+    overlayMs,
   })
 
   let expected: PublicLifecycleProjection
+  const referenceStartedAt = Date.now()
   try {
     expected = await withTimeout(reference(origin), timeoutMs, 'reference read')
+    referenceMs = Date.now() - referenceStartedAt
   } catch (error) {
     // The comparison baseline is missing, so the overlay cannot be judged.
+    referenceMs = Date.now() - referenceStartedAt
     return result('reference-unavailable', [message(error)])
   }
 
+  const overlayStartedAt = Date.now()
   try {
     const overlay = await withTimeout(options.overlay(origin), timeoutMs, 'overlay read')
+    overlayMs = Date.now() - overlayStartedAt
     const errors = comparePublicLifecycleProjection(expected, publicLifecycleProjection(overlay))
     return result(errors.length ? 'diverged' : 'match', errors)
   } catch (error) {
+    overlayMs = Date.now() - overlayStartedAt
     return result('overlay-unavailable', [message(error)])
   }
 }
