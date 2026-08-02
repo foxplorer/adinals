@@ -887,6 +887,32 @@ Both can coexist: a reader that verifies a hash can accept bytes from an
 inscription, from UHRP, or from a content host, and prefer whichever answers
 first.
 
+## Storage coherence versus wire format
+
+Two different questions get conflated when overlay reads feel slow: whether the
+node should store state more coherently, and whether it should return something
+easier to consume. Measurement separates them.
+
+Consuming is already cheap. A full client projection of a five-ad collection,
+including BEEF parsing, SIGMA verification, and the chain derivation, took 567
+milliseconds while a bare `curl` of the same query took 615. Verification
+disappears into the noise, so returning derived JSON instead of evidence would
+optimise something that costs nothing, and would forfeit the property the
+overlay exists for: a client that cannot check an answer is trusting a service
+again, merely a different one.
+
+Storing more coherently is worth doing, for the server rather than the wire. The
+resolver calls `findAllRecords` and derives in memory on every request, so it
+scans everything the node holds to answer a question about one collection. That
+is invisible at a hundred records and linear as the namespace grows. Indexing by
+collection origin and ad origin, and retaining the resolved current state
+alongside the evidence, would cut that without changing a single byte of what a
+reader receives.
+
+The rule that follows: derive on write, serve evidence on read. A hint alongside
+the evidence is acceptable only if the client verifies it against that evidence,
+and is not worth adding while parsing costs nothing.
+
 ## Reader migration plan
 
 Overlay delivery is a write path. The product still reads through
