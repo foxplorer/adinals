@@ -168,9 +168,13 @@ would remove the last discovery dependency are in
 3. Publish a read-only typed SDK/CLI or MCP interface against a stable
    `api.adinals.com` origin, then add wallet-authorized actions through an
    injected BRC-100 `WalletInterface`; never accept seeds, WIFs, or mnemonics.
-4. Add publisher moderation, reputation, scam warnings, and clearer separation
+4. Evaluate inscribing a content hash with UHRP-hosted bytes for large
+   creatives, which would cut minting cost and projection size at the price of
+   depending on a host to retain them. This is a future record version rather
+   than a change to version 3.
+5. Add publisher moderation, reputation, scam warnings, and clearer separation
    between protocol-valid, collection-approved, and publisher-featured content.
-5. Consider BRC-121 HTTP 402 payments only for hosted services such as
+6. Consider BRC-121 HTTP 402 payments only for hosted services such as
    high-availability history, proof delivery, moderation, analytics, and relays.
    Direct wallet actions and independent verification should remain permissionless.
 

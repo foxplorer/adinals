@@ -844,6 +844,34 @@ improvement against it is substantial: a six-ad collection fell from 7,012 to
 five-ad collection from 2,316 to 567. Overlay reads are now comparable to the
 derived reader on text collections and faster on several.
 
+## Creative storage: inscribed bytes or UHRP references
+
+Version 3 inscribes creative bytes directly, which is why a 187 KB cover
+reserves roughly nineteen thousand satoshis and why a projection of the
+Billboards collection transfers 429 KB. The alternative is to inscribe only a
+content hash and hold the bytes in UHRP storage, resolving them by hash at read
+time.
+
+What that would buy: a large image record would cost roughly what a text record
+costs, since only a hash is inscribed; projections would shrink to metadata;
+and retrieval would stop depending on an ordinals content host, because a UHRP
+lookup is content addressed and verifiable against the inscribed hash.
+
+What it would cost: permanence changes character. Inscribed bytes are as durable
+as the chain, whereas a UHRP reference is durable only while some host still
+serves those bytes, and a creative that no host retains becomes a verifiable
+hash pointing at nothing. That is a protocol-level trade rather than an
+implementation detail, so it belongs to a future record version rather than to
+version 3, which fixes the record format for every collection already minted.
+
+It also interacts with serving creatives from BEEF. Under version 3 the bytes
+ride inside the evidence the overlay already returns; under a hash-reference
+version the overlay would carry the hash and the client would fetch bytes
+separately, which reintroduces a retrieval dependency the current plan removes.
+Both can coexist: a reader that verifies a hash can accept bytes from an
+inscription, from UHRP, or from a content host, and prefer whichever answers
+first.
+
 ## Reader migration plan
 
 Overlay delivery is a write path. The product still reads through
