@@ -149,6 +149,8 @@ that every negative vector is rejected.
 | Confirmed missed-mint backfill | Pass: Ad #4 was admitted as exactly one new transaction after confirmation and exact output 0 is hydrated |
 | Scheduled shadow rounds | Implemented: `overlay:shadow` retains per-round reports, keeps failing transcripts, and exits non-zero; two clean rounds plus a verified failure round |
 | Transition-type admission coverage | Pass on chain for collections, mints, listings, purchases, cancellation, updates, and decisions; plain transfers have unit coverage only, with no live mainnet vector yet |
+| Cross-wallet purchase, update, and approval | Pass on the hosted node: bought with Yours, updated by the buyer, approved with Metanet, all resolving against the public reader |
+| Image collections, mints, and updates | Automated only: a 150 KB parsing/SIGMA vector and image byte-hash parity; no recent live wallet run |
 | CARS shadow deployment | Live: release `6cbe8de9` serves `tm_adinals`/`ls_adinals` over HTTPS, replayed the confirmed namespace, and passes full shadow rounds |
 | Hosted cross-origin browser submission | Pass: a Metanet Desktop collection posted BEEF from Brave to the CARS node with no proxy and reached indexed |
 | In-app overlay shadow read | Implemented and unit tested; compares the overlay against the rendered public reader in the background and never affects the view |

@@ -760,6 +760,27 @@ genuinely required. Do not include generated keys, database state, wallet-local
 references, or unbroadcast Atomic BEEF in a public commit.
 ```
 
+## Image records and submission headroom
+
+Image collections, mints, and updates carry inscription bytes, so their scripts
+and therefore their BEEF are orders of magnitude larger than a text record. Two
+size limits could bite and only one has been measured.
+
+The hosted node accepts large bodies: 200 KB, 1 MB, and 4 MB `POST /submit`
+requests all reach the application and are rejected as invalid BEEF with HTTP
+400 rather than refused by an ingress with 413. A browser image submission
+therefore has ample headroom.
+
+What remains untested against a live wallet is the fee reserve. The anchor is
+sized from the unsigned record's byte length, so an image record reserves far
+more than the 200-satoshi floor, and an under-estimate makes the wallet add
+funding inputs of its own. That path now works, but only since the anchor was
+located by content rather than position. A large image mint and a large image
+update should be exercised on both wallets before images are considered
+covered; automated coverage currently proves parsing and SIGMA against a 150 KB
+vector and compares image byte hashes during parity, which is not the same as a
+wallet signing one.
+
 ## Reader migration plan
 
 Overlay delivery is a write path. The product still reads through
