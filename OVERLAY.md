@@ -690,6 +690,15 @@ Verified state as of 2026-08-02, end of session:
   ownership chain in `src/readers/overlayMarketEvents.ts`.
 - Nothing renders from the overlay yet. The application is stable and every
   displayed value still comes from GorillaPool and the derived reader.
+- Two limitations qualify what the node can currently prove, and both are
+  addressed by steps in the next phase rather than by anything already done.
+  Records submitted live are stored as unconfirmed BEEF and nothing re-ingests
+  them once their block lands, so for its newest records the node proves
+  ancestry and signatures but not inclusion. And discovery still depends on
+  GorillaPool: an Adinal sold outside this application reaches the node only
+  through reconciliation. The node is therefore a verified store with a trusted
+  discovery feed rather than an independent one, and any claim made for it
+  should say so.
 - 186 application tests, 36 backend tests, typecheck, script self-test, and the
   production build all pass.
 - A complete image lifecycle passes on current code: mint, listing, purchase,

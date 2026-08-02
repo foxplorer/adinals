@@ -159,6 +159,8 @@ that every negative vector is rejected.
 | CARS shadow deployment | Live: release `6cbe8de9` serves `tm_adinals`/`ls_adinals` over HTTPS, replayed the confirmed namespace, and passes full shadow rounds |
 | Hosted cross-origin browser submission | Pass: a Metanet Desktop collection posted BEEF from Brave to the CARS node with no proxy and reached indexed |
 | In-app overlay shadow read | Implemented and unit tested; compares the overlay against the rendered public reader in the background and never affects the view |
+| Overlay SPV completeness | Partial: records ingested while unconfirmed hold proof-less BEEF, so the node proves ancestry and signatures but not inclusion for its newest records |
+| Overlay independence | Partial: discovery still depends on GorillaPool reconciliation until a second node enables SHIP, SLAP, and GASP |
 | Overlay-first reads | Groundwork complete, migration not started: one-request projections deployed and fast enough to render from, view model extracted, market history derived from the chain; every displayed value still comes from GorillaPool |
 | Agent SDK/CLI/MCP interface | Not implemented |
 | Publisher moderation/reputation layer | Not implemented |
