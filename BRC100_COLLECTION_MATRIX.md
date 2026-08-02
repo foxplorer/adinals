@@ -154,7 +154,8 @@ that every negative vector is rejected.
 | Transition-type admission coverage | Pass on chain for collections, mints, listings, purchases, cancellation, updates, and decisions; plain transfers have unit coverage only, with no live mainnet vector yet |
 | Cross-wallet purchase, update, and approval | Pass on the hosted node: bought with Yours, updated by the buyer, approved with Metanet, all resolving against the public reader |
 | Image collection cover | Pass on Metanet Desktop with current code: about eleven thousand satoshis, no wallet correction, and a 129 KB BEEF admitted by the hosted overlay before the public content host served the image |
-| Image mints and updates | Indexing proven on real records up to a 187 KB cover and a 107 KB update creative; a large image mint or update on current code is untested |
+| Image mints and updates | Pass on current code: a full image lifecycle of mint, listing, purchase, owner update, and creator approval, with both update outputs admitted by the hosted overlay at 126 KB of BEEF each |
+| Public image availability | Lags the overlay: the derived reader failed an entire image ad with a content 404 while the overlay held the complete record; third-party visibility arrives after propagation |
 | CARS shadow deployment | Live: release `6cbe8de9` serves `tm_adinals`/`ls_adinals` over HTTPS, replayed the confirmed namespace, and passes full shadow rounds |
 | Hosted cross-origin browser submission | Pass: a Metanet Desktop collection posted BEEF from Brave to the CARS node with no proxy and reached indexed |
 | In-app overlay shadow read | Implemented and unit tested; compares the overlay against the rendered public reader in the background and never affects the view |

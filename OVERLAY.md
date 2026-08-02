@@ -805,25 +805,33 @@ A lapsed CARS balance must still degrade reads silently to the fallback path
 rather than to an error, because the node's funding is an operational detail
 rather than a protocol one.
 
-The image decision has changed, though the case is narrower than it first
-appeared. The application already shows the creator a local preview built from
-the bytes they selected, so their own view is never blank. Other viewers have no
-such fallback: an embed, a second browser, or another person must fetch the
-creative from a public content host.
+The image decision has changed, and a complete image lifecycle established the
+case with measurements rather than argument.
 
-A live image collection cover showed the size of that window. Well after
-creation, and with the transaction still unconfirmed, GorillaPool's content
-endpoint reported the inscription as not found and ordfs returned an error,
-while the hosted overlay already held the complete 129 KB BEEF and therefore the
-image itself. Whether public hosts are merely propagating slowly or waiting for
-confirmation is not established by that single observation, and the creator's
-local preview hides the difference from the person best placed to notice it.
+The application shows the creator a local preview built from the bytes they
+selected, so their own view is never blank and the gap is invisible to the
+person best placed to notice it. Everyone else depends on a public content host.
+
+A live image ad exercised mint, listing, purchase, owner update, and creator
+approval. Minutes after its update was published, the hosted overlay held both
+outputs of that update with a 126,499-byte BEEF each, containing the image.
+GorillaPool's content endpoint returned HTTP 404 for the same record, and the
+derived public reader consequently failed for the entire ad with
+`Current Adinals image read failed: 404`. So the public API served nothing at
+all for that ad, not merely a missing picture, while the overlay could have
+answered completely. Embeds and agents are the consumers that lose most.
+
+The in-app shadow read recorded this correctly as `reference-unavailable` and
+skipped the overlay call rather than reporting a false divergence, which is the
+attribution that stage-one design exists to produce.
 
 Creative bytes ride inside the BEEF the overlay already returns, so serving them
-from there closes the window for third-party viewers while keeping the hash
-check that made the original decision attractive. Stage two should therefore
-render creatives from overlay BEEF when available and fall back to the public
-content hosts, rather than the reverse.
+from there closes the window while keeping the hash check that made the original
+decision attractive. Stage two should render creatives from overlay BEEF when
+available and fall back to the public content hosts, rather than the reverse.
+Third-party visibility does eventually arrive, and image records have been
+confirmed visible in a private browser once propagation completes, so this is a
+window to close rather than a permanent failure.
 
 ## Collection anchor position and wallet funding
 
