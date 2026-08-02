@@ -78,6 +78,12 @@ change the Adinals transaction or authorization rules.
   published or aborted, while the wallet still counts both in its displayed
   balance. One abandoned collection rehearsal can therefore make most of a
   balance unspendable, which looks like a wallet fault and is not one.
+- `createSignature` treats `data` and `hashToDirectlySign` as alternatives.
+  Yours Wallet honours the supplied hash when both are sent; Metanet Desktop
+  prefers `data` and signs a single SHA-256 of it. A Bitcoin sighash is a double
+  SHA-256, so the resulting signature verifies against the wallet's own reported
+  key while failing `OP_CHECKSIG`, which reads as a key or wallet fault and is
+  neither. Send the sighash alone.
 - Wallets do not preserve declared output or input positions. Reading the SIGMA
   fee reserve from output 0, or signing the anchor spend at input 0, works with
   Yours Wallet and fails against a wallet that adds its own funding. Both are

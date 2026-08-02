@@ -835,6 +835,27 @@ shapes. The helper deliberately imports nothing from `@1sat/templates` so it
 runs under Node's test runner, which cannot resolve that package's
 extensionless ESM chain.
 
+## Signing a Bitcoin sighash through BRC-100
+
+`createSignature` accepts `data` or `hashToDirectlySign`, and the two are
+alternatives rather than companions. The derived-input signer sent both, which
+leaves the choice to the wallet. Yours Wallet honours the hash. Metanet Desktop
+prefers `data` and signs a single SHA-256 of it, while a Bitcoin sighash is the
+double hash, so its signature verifies against its own reported public key and
+still fails `OP_CHECKSIG`.
+
+That failure is deeply misleading. `OP_EQUALVERIFY` passes first, proving the
+pushed public key is right, so the error points at a signature that is
+cryptographically valid over the wrong message. Isolated conformance probes of
+each field also pass, because the divergence only appears when both fields are
+sent together.
+
+`src/wallet/signingConformance.ts` now probes that combined case alongside the
+individual ones, and the request in `signDerivedP2PKHInput` carries the sighash
+alone. Reaching this took ruling out several plausible causes by measurement:
+the anchor's output position, the anchor's input position, and the wallet's key
+derivation were each tested and cleared before the request shape was examined.
+
 ## Anchor output and input positions
 
 `createAction` declares outputs and inputs; it does not fix their final
