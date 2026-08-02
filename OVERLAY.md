@@ -829,9 +829,12 @@ Creative bytes ride inside the BEEF the overlay already returns, so serving them
 from there closes the window while keeping the hash check that made the original
 decision attractive. Stage two should render creatives from overlay BEEF when
 available and fall back to the public content hosts, rather than the reverse.
-Third-party visibility does eventually arrive, and image records have been
-confirmed visible in a private browser once propagation completes, so this is a
-window to close rather than a permanent failure.
+The window closes at confirmation. Repeated checks throughout the unconfirmed
+period returned 404, and once the transaction made a block the creative served
+normally, the derived reader stopped failing, and the browser console reported
+no errors. Image records have also been confirmed visible in a private browser
+after that point. So this is roughly a one-block window for third-party viewers
+rather than a permanent failure, on every new image ad and every image update.
 
 ## Collection anchor position and wallet funding
 
