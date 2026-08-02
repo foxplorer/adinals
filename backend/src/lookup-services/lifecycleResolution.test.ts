@@ -6,6 +6,7 @@ import {
   resolveAdCurrent,
   resolveAdHistory,
   resolveCollectionLiveEvidence,
+  resolveCollectionProjectionEvidence,
   resolvePendingDecisionEvidence
 } from './lifecycleResolution.js'
 
@@ -243,6 +244,41 @@ test('collection live evidence contains the complete verifiable current chain', 
     updateOutpoint,
     `${'b'.repeat(64)}_0`
   ])
+})
+
+test('projection evidence keeps an expired collection that live evidence drops', () => {
+  const candidates = records()
+  const collection = candidates.find((record) => record.recordType === 'collection')
+  assert.ok(collection?.map)
+  collection.map.expiresAt = '2026-08-02T00:00:00.000Z'
+  const after = new Date('2026-08-03T00:00:00.000Z')
+
+  // Display eligibility ends at expiry, so live evidence returns the collection
+  // alone while a projection still has to describe every ad it contains.
+  assert.deepEqual(
+    resolveCollectionLiveEvidence(candidates, collectionId, after)
+      .map((record) => `${record.txid}_${record.outputIndex}`),
+    [collectionId]
+  )
+  const projection = resolveCollectionProjectionEvidence(candidates, collectionId)
+    .map((record) => `${record.txid}_${record.outputIndex}`)
+  assert.equal(projection[0], collectionId)
+  assert.ok(projection.includes(origin))
+  assert.ok(projection.includes(updateOutpoint))
+  assert.ok(projection.length > 1)
+})
+
+test('projection evidence is independent of the moment it is asked', () => {
+  const first = resolveCollectionProjectionEvidence(records(), collectionId)
+  const second = resolveCollectionProjectionEvidence(records(), collectionId)
+  assert.deepEqual(
+    first.map((record) => `${record.txid}_${record.outputIndex}`),
+    second.map((record) => `${record.txid}_${record.outputIndex}`)
+  )
+})
+
+test('an unknown collection projects nothing rather than guessing', () => {
+  assert.deepEqual(resolveCollectionProjectionEvidence(records(), `${'f'.repeat(64)}_0`), [])
 })
 
 test('pending decision evidence includes undecided current-epoch owner updates only', () => {

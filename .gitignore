@@ -4,6 +4,7 @@ dist/
 .selftest-dist/
 .overlay-parity-dist/
 .overlay-reconcile-dist/
+.overlay-projection-dist/
 coverage/
 *.tsbuildinfo
 vite.config.js

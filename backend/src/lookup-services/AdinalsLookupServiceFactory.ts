@@ -27,6 +27,7 @@ import {
   resolveAdCurrent,
   resolveAdHistory,
   resolveCollectionLiveEvidence,
+  resolveCollectionProjectionEvidence,
   resolvePendingDecisionEvidence
 } from './lifecycleResolution.js'
 
@@ -198,6 +199,15 @@ export class AdinalsLookupService implements LookupService {
       }
       const records = await this.storage.findAllRecords()
       return resolveCollectionLiveEvidence(records, query.origin)
+        .map(({ txid, outputIndex }) => ({ txid, outputIndex }))
+    }
+
+    if (query.type === 'collectionProjection') {
+      if (typeof query.origin !== 'string' || !/^([0-9a-f]{64})_(\d+)$/.test(query.origin)) {
+        throw new Error('A valid collection origin is required')
+      }
+      const records = await this.storage.findAllRecords()
+      return resolveCollectionProjectionEvidence(records, query.origin)
         .map(({ txid, outputIndex }) => ({ txid, outputIndex }))
     }
 

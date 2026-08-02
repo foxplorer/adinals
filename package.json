@@ -20,6 +20,7 @@
     "overlay:backfill": "node --experimental-strip-types scripts/overlay-backfill.ts",
     "overlay:smoke": "node --experimental-strip-types scripts/overlay-local-smoke.ts",
     "overlay:parity": "vite build --config scripts/vite.overlay-parity.config.ts && node .overlay-parity-dist/overlay-reader-parity.js",
+    "overlay:projection-diff": "vite build --config scripts/vite.overlay-projection.config.ts && node .overlay-projection-dist/overlay-projection-diff.js",
     "overlay:reconcile": "vite build --config scripts/vite.overlay-reconcile.config.ts && node .overlay-reconcile-dist/overlay-reconcile.js",
     "overlay:shadow": "node --experimental-strip-types scripts/overlay-shadow.ts",
     "overlay:cars:preflight": "node --experimental-strip-types scripts/overlay-cars-preflight.ts",

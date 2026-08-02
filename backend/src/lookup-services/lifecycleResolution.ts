@@ -305,6 +305,35 @@ export const resolveCollectionLiveEvidence = (
   return uniqueRecords(evidence)
 }
 
+/**
+ * Every output a reader needs to project an entire collection in one request.
+ *
+ * `resolveCollectionLiveEvidence` answers a narrower question: which ads are
+ * display eligible right now. A projection also has to describe ads whose
+ * proposals are pending or rejected and ads in an expired collection, so this
+ * returns the full history evidence for every winning mint regardless of
+ * display eligibility. Collapsing a reader's twelve round trips into one is
+ * what makes reading from the overlay practical.
+ */
+export const resolveCollectionProjectionEvidence = (
+  records: readonly AdmittedOutputRecord[],
+  collectionId: string
+): AdmittedOutputRecord[] => {
+  const collection = records.find((candidate) =>
+    candidate.recordType === 'collection' && outpoint(candidate) === collectionId
+  )
+  if (!collection) return []
+  const evidence: AdmittedOutputRecord[] = [collection]
+  for (const mint of resolveMintWinners(records).filter(
+    (candidate) => collectionIdFromMint(candidate) === collectionId
+  )) {
+    const history = resolveAdHistory(records, outpoint(mint))
+    if (!history) continue
+    evidence.push(...history.evidence)
+  }
+  return uniqueRecords(evidence)
+}
+
 export const resolvePendingDecisionEvidence = (
   records: readonly AdmittedOutputRecord[],
   creator: string,
