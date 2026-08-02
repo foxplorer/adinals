@@ -760,26 +760,27 @@ genuinely required. Do not include generated keys, database state, wallet-local
 references, or unbroadcast Atomic BEEF in a public commit.
 ```
 
-## Image records and submission headroom
+## Image records
 
-Image collections, mints, and updates carry inscription bytes, so their scripts
-and therefore their BEEF are orders of magnitude larger than a text record. Two
-size limits could bite and only one has been measured.
+The production namespace already contains image records: one image collection,
+two image mints, and one image update, all admitted by the topic manager and
+compared during parity by content hash as well as by source outpoint. Image
+admission and resolution are therefore proven against real records rather than
+only against fixtures.
 
-The hosted node accepts large bodies: 200 KB, 1 MB, and 4 MB `POST /submit`
-requests all reach the application and are rejected as invalid BEEF with HTTP
-400 rather than refused by an ingress with 413. A browser image submission
-therefore has ample headroom.
+Typical Adinals creatives are small. At around 2.3 KB an image record is barely
+larger than a text one, so the anchor fee reserve, the browser's BEEF assembly,
+and the submission body are all ordinary. Transport has headroom regardless:
+200 KB, 1 MB, and 4 MB `POST /submit` requests all reach the hosted application
+and are rejected as invalid BEEF with HTTP 400 rather than refused by an ingress
+with 413.
 
-What remains untested against a live wallet is the fee reserve. The anchor is
-sized from the unsigned record's byte length, so an image record reserves far
-more than the 200-satoshi floor, and an under-estimate makes the wallet add
-funding inputs of its own. That path now works, but only since the anchor was
-located by content rather than position. A large image mint and a large image
-update should be exercised on both wallets before images are considered
-covered; automated coverage currently proves parsing and SIGMA against a 150 KB
-vector and compares image byte hashes during parity, which is not the same as a
-wallet signing one.
+What remains untested is a live image write through the current code: creating
+an image collection, minting an image ad, and updating one, on each wallet. The
+automated suite covers parsing and SIGMA against a 150 KB vector, which
+exercises the code but not a wallet signing and broadcasting it. Only very large
+creatives would make size itself a factor, and none of the production records
+approach that.
 
 ## Reader migration plan
 
