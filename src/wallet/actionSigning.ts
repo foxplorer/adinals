@@ -74,11 +74,13 @@ export async function signDerivedP2PKHInput(
   })
   const sighash = Hash.sha256(Hash.sha256(preimage))
   const [{ signature }, { publicKey }] = await Promise.all([
+    // `data` and `hashToDirectlySign` are alternatives, not companions. Sending
+    // both lets a wallet choose, and one that prefers `data` signs a single
+    // SHA-256 where a Bitcoin sighash requires the double hash.
     wallet.createSignature({
       protocolID,
       keyID,
       counterparty: 'self',
-      data: preimage,
       hashToDirectlySign: sighash,
     }),
     wallet.getPublicKey({

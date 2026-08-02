@@ -556,6 +556,10 @@ function CollectionWorkspace() {
               <span>{signing.directHashHonoured ? 'Yes' : 'No'}</span>
             </li>
             <li>
+              <span>Honours the hash when data accompanies it</span>
+              <span>{signing.bothFieldsHonourDirectHash ? 'Yes' : 'No'}</span>
+            </li>
+            <li>
               <span>Hashes supplied data once before signing</span>
               <span>{signing.dataHashedOnce ? 'Yes' : 'No'}</span>
             </li>

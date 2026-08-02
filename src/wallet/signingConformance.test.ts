@@ -57,3 +57,22 @@ test('a wallet signing with an unrelated key is reported as unexplained', async 
   assert.equal(result.unexplained, true)
   assert.match(summarizeSigningConformance(result), /does not match the one it reported/)
 })
+
+test('a wallet preferring data over a supplied hash is identified', async () => {
+  const key = PrivateKey.fromRandom()
+  const reference = new ProtoWallet(key)
+  const wallet = {
+    getPublicKey: reference.getPublicKey.bind(reference),
+    async createSignature(args: { data?: number[]; hashToDirectlySign?: number[] }) {
+      // Prefers `data` whenever it is present, contrary to the reference order.
+      const message = args.data ? Hash.sha256(args.data) : (args.hashToDirectlySign ?? [])
+      const derived = (reference as unknown as { keyDeriver: { derivePrivateKey: (p: unknown, k: string, c: string) => PrivateKey } })
+        .keyDeriver.derivePrivateKey([1, 'adinals'], keyID, 'self')
+      return { signature: ECDSA.sign(new BigNumber(message), derived, true).toDER() as number[] }
+    },
+  }
+  const result = await readSigningConformance(wallet as never, [1, 'adinals'], keyID)
+  assert.equal(result.directHashHonoured, true)
+  assert.equal(result.bothFieldsHonourDirectHash, false)
+  assert.match(summarizeSigningConformance(result), /ignores the supplied hash when data accompanies it/)
+})

@@ -26,6 +26,12 @@ export type SigningConformance = {
   directHashHonoured: boolean
   /** The wallet hashed the supplied data once with SHA-256 before signing. */
   dataHashedOnce: boolean
+  /**
+   * The wallet still honoured the supplied hash when `data` accompanied it.
+   * The two fields are alternatives, so a wallet preferring `data` signs a
+   * single SHA-256 where a Bitcoin sighash needs the double hash.
+   */
+  bothFieldsHonourDirectHash: boolean
   /** Set when the wallet signed a message neither convention explains. */
   unexplained: boolean
   errors: string[]
@@ -82,6 +88,25 @@ export async function readSigningConformance(
     errors.push(`hashToDirectlySign failed: ${error instanceof Error ? error.message : String(error)}`)
   }
 
+  let bothFieldsHonourDirectHash = false
+  try {
+    const { signature } = await wallet.createSignature({
+      protocolID,
+      keyID,
+      counterparty: 'self',
+      data,
+      hashToDirectlySign: doubleHash,
+    })
+    bothFieldsHonourDirectHash = verifies(signature, doubleHash, publicKey)
+    if (!bothFieldsHonourDirectHash && verifies(signature, singleHash, publicKey)) {
+      errors.push(
+        'With both data and hashToDirectlySign supplied, the wallet signed the data instead of the hash.',
+      )
+    }
+  } catch (error) {
+    errors.push(`combined signing failed: ${error instanceof Error ? error.message : String(error)}`)
+  }
+
   try {
     const { signature } = await wallet.createSignature({
       protocolID,
@@ -100,6 +125,7 @@ export async function readSigningConformance(
   return {
     publicKey,
     directHashHonoured,
+    bothFieldsHonourDirectHash,
     dataHashedOnce,
     unexplained: !directHashHonoured && !dataHashedOnce,
     errors,
@@ -107,6 +133,9 @@ export async function readSigningConformance(
 }
 
 export const summarizeSigningConformance = (result: SigningConformance): string => {
+  if (result.directHashHonoured && !result.bothFieldsHonourDirectHash) {
+    return 'This wallet ignores the supplied hash when data accompanies it, so only one of the two may be sent.'
+  }
   if (result.directHashHonoured) {
     return 'This wallet signs the exact hash it is given, so transaction signing should match its reported key.'
   }
