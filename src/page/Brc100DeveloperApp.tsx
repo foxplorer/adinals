@@ -28,6 +28,11 @@ import {
   type NoSendActionSummary,
 } from '../wallet/noSendMaintenance.ts'
 import {
+  readSigningConformance,
+  summarizeSigningConformance,
+  type SigningConformance,
+} from '../wallet/signingConformance.ts'
+import {
   loadCollectionPublicationAttempt,
   saveCollectionPublicationAttempt,
   type CollectionPublicationAttempt,
@@ -167,6 +172,34 @@ function CollectionWorkspace() {
   const [noSendBusy, setNoSendBusy] = useState(false)
   const [noSendNote, setNoSendNote] = useState('')
   const [noSendUnderstood, setNoSendUnderstood] = useState(false)
+  const [signing, setSigning] = useState<SigningConformance | null>(null)
+  const [signingBusy, setSigningBusy] = useState(false)
+  const [signingNote, setSigningNote] = useState('')
+
+  /**
+   * Asks the wallet to sign a throwaway hash with a derived key and checks the
+   * result against the public key it reports. A spend that fails at
+   * `OP_CHECKSIG` cannot distinguish a wrong message from a wrong key; this can.
+   */
+  const checkSigning = async () => {
+    if (!wallet) return
+    setSigningBusy(true)
+    setSigningNote('')
+    try {
+      const result = await readSigningConformance(
+        wallet,
+        [1, ADINALS_NAMESPACE.keyProtocol],
+        'signing-conformance-probe',
+      )
+      setSigning(result)
+      setSigningNote(summarizeSigningConformance(result))
+    } catch (signingError) {
+      setSigning(null)
+      setSigningNote(signingError instanceof Error ? signingError.message : String(signingError))
+    } finally {
+      setSigningBusy(false)
+    }
+  }
 
   /**
    * Wallet-side review of every no-send action, including rehearsals whose
@@ -500,6 +533,41 @@ function CollectionWorkspace() {
 
   return (
     <div className="collection-workspace-stack">
+      <section className="collection-recovery" aria-label="Wallet signing conformance">
+        <div>
+          <span className="phase-badge">Wallet signing</span>
+          <h3>Derived-key signing conformance</h3>
+          <p>
+            A spend that fails at <code>OP_CHECKSIG</code> proves only that the signature does not match the pushed
+            public key. It cannot say whether the wallet signed a different message or used a different key. This asks
+            the wallet to sign a throwaway hash with a derived key and verifies the result against the public key it
+            reports for the same protocol and key identifier. No transaction is created or broadcast.
+          </p>
+        </div>
+        <div className="adlab-wallet-actions">
+          <button type="button" className="ads-back" disabled={!wallet || signingBusy} onClick={() => void checkSigning()}>
+            {signingBusy ? 'Asking wallet…' : 'Check derived-key signing'}
+          </button>
+        </div>
+        {signing && (
+          <ul className="retained-rehearsals">
+            <li>
+              <span>Signs the exact hash supplied</span>
+              <span>{signing.directHashHonoured ? 'Yes' : 'No'}</span>
+            </li>
+            <li>
+              <span>Hashes supplied data once before signing</span>
+              <span>{signing.dataHashedOnce ? 'Yes' : 'No'}</span>
+            </li>
+            <li>
+              <span>Reported public key</span>
+              <code>{shortKey(signing.publicKey)}</code>
+            </li>
+          </ul>
+        )}
+        {signing?.errors.map((entry) => <p key={entry} role="alert">{entry}</p>)}
+        {signingNote && <p role="status">{signingNote}</p>}
+      </section>
       <section className="collection-recovery" aria-label="Wallet no-send maintenance">
         <div>
           <span className="phase-badge">Wallet-side release</span>
