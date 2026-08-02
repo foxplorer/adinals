@@ -160,6 +160,7 @@ function CollectionWorkspace() {
   const [publicationAttempt, setPublicationAttempt] = useState<CollectionPublicationAttempt | null>(null)
   const [reconcilingPublication, setReconcilingPublication] = useState(false)
   const [retainedRehearsals, setRetainedRehearsals] = useState<RetainedCollectionRehearsal[]>([])
+  const [rehearsalOutcomes, setRehearsalOutcomes] = useState<Record<string, string>>({})
   const [releasing, setReleasing] = useState('')
   const [releaseNote, setReleaseNote] = useState('')
   const [noSendSummary, setNoSendSummary] = useState<NoSendActionSummary | null>(null)
@@ -198,8 +199,28 @@ function CollectionWorkspace() {
 
   const refreshRetainedRehearsals = useCallback(async () => {
     if (!session) return
-    setRetainedRehearsals(await listCollectionRehearsals(session.identityKey))
+    const rows = await listCollectionRehearsals(session.identityKey)
+    setRetainedRehearsals(rows)
+    // A published rehearsal reserves nothing: its wallet action was sent, not
+    // abandoned. Listing it as reserved funding would misreport the wallet.
+    const outcomes = await Promise.all(rows.map(async (row) => [
+      row.result.outpoint,
+      (await loadCollectionPublicationAttempt(session.identityKey, row.result.outpoint))?.outcome ?? '',
+    ] as const))
+    setRehearsalOutcomes(Object.fromEntries(outcomes))
   }, [session])
+
+  /** Drops a retained record whose wallet action is already gone. */
+  const forgetRehearsal = async (outpoint: string) => {
+    setReleasing(outpoint)
+    try {
+      await forgetCollectionRehearsal(outpoint)
+      setReleaseNote('Retained record dropped. The wallet was not asked to do anything.')
+      await refreshRetainedRehearsals()
+    } finally {
+      setReleasing('')
+    }
+  }
 
   useEffect(() => {
     void refreshRetainedRehearsals()
@@ -553,7 +574,19 @@ function CollectionWorkspace() {
                 <code>{shortKey(rehearsal.outpoint)}</code>
                 <span>{rehearsal.map.name || 'Unnamed collection'}</span>
                 <span>{new Date(savedAt).toLocaleString()}</span>
-                {rehearsal.actionReference ? (
+                {rehearsalOutcomes[rehearsal.outpoint] === 'accepted' ? (
+                  <>
+                    <span>Published — reserves nothing</span>
+                    <button
+                      type="button"
+                      className="ads-back"
+                      disabled={releasing === rehearsal.outpoint}
+                      onClick={() => void forgetRehearsal(rehearsal.outpoint)}
+                    >
+                      Forget this record
+                    </button>
+                  </>
+                ) : rehearsal.actionReference ? (
                   <button
                     type="button"
                     className="ads-back ads-reject"
@@ -563,9 +596,17 @@ function CollectionWorkspace() {
                     {releasing === rehearsal.outpoint ? 'Releasing…' : 'Release reserved funding'}
                   </button>
                 ) : (
-                  <span>
-                    No retained abort reference. Release it from the wallet’s own action management if it offers one.
-                  </span>
+                  <>
+                    <span>No retained abort reference — release it from the wallet, then drop this record.</span>
+                    <button
+                      type="button"
+                      className="ads-back"
+                      disabled={releasing === rehearsal.outpoint}
+                      onClick={() => void forgetRehearsal(rehearsal.outpoint)}
+                    >
+                      Forget this record
+                    </button>
+                  </>
                 )}
               </li>
             ))}
