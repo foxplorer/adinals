@@ -77,9 +77,9 @@ npm run build
 npm run preview
 ```
 
-The repository currently passes 32 browser/application Node test files, the
-independent collection script/fixture verifier, the backend overlay suite,
-TypeScript compilation, and the production Vite build.
+The repository currently passes 178 browser and application tests across 33
+Node test files, the independent collection script/fixture verifier, the backend
+overlay suite, TypeScript compilation, and the production Vite build.
 
 ## Environment switches
 
@@ -92,7 +92,7 @@ Production is the default. These variables are explicit operator controls:
 | `VITE_ENABLE_LIFECYCLE_PUBLISH=false` | Emergency read-only switch for mint/update/market actions. |
 | `VITE_ADINALS_API_BASE` | Override the derived JSON reader base URL. |
 | `VITE_ADINALS_EMBED_SCRIPT_URL` | Override the hosted web-component URL. |
-| `VITE_ADINALS_OVERLAY_URL` | Enable browser overlay delivery at an explicit endpoint; local Vite development defaults to `http://localhost:8080`. |
+| `VITE_ADINALS_OVERLAY_URL` | Overlay endpoint for browser delivery. Committed in `.env.production` for hosted builds; a local `.env` overrides it, and development falls back to `http://localhost:8080`. |
 
 Do not change the production namespace, key protocol, basket, or action labels
 casually; existing wallet custody and public records depend on them.
@@ -119,137 +119,44 @@ supports both text and image creatives.
 
 ## Current infrastructure boundary
 
-The browser currently uses GorillaPool for record discovery, spend history, and
-index submission, with WhatsOnChain/raw transaction checks for independent
-verification. A successful index-submission response does not prove an output
-is already queryable, so the UI verifies exact outpoints separately.
+**Reads** come from GorillaPool for record discovery and spend history, the
+derived public reader for JSON, and public content hosts for creative images,
+with WhatsOnChain raw-transaction checks for independent verification. A
+successful index submission does not prove an output is queryable, so the UI
+verifies exact outpoints separately and labels incomplete states as provisional
+rather than guessing.
 
-Explicit inscription records often appear before confirmation. Cross-wallet
-purchase history can lag until the next block because the indexer may expose a
-listing or update before it exposes the intervening spend chain and owner epoch.
-The application labels these states as provisional and never approves an update
-whose ownership path cannot yet be proven.
+**Writes** additionally go to an Adinals overlay. Every wallet-accepted
+collection and lifecycle action queues its verified Atomic BEEF, treats submit
+as a processing acknowledgment, polls the exact hydrated outputs, persists
+provisional, indexed, retrying, and failed delivery state, and retries outages
+without ever changing the wallet action's own success. An update requires both
+its state output and its record output before it counts as delivered.
 
-An experimental local LARS overlay is now included under `backend/`. Its topic
-manager and lookup resolver replay the confirmed production version 3
-namespace, including OrdLock listing/purchase classification, owner epochs,
-updates, creator decisions, full history, current creative, collection-wide
-live proof sets, and pending-decision resolution. A clean 2026-08-01 replay
-admitted 69 transactions spanning five collections, 18 mints, 38 lifecycle
-transitions, and eight decisions with no failures or unresolved confirmed spend
-links. It is not deployed publicly or used by the production browser yet;
-GorillaPool remains the live discovery path.
+The overlay is a BRC-22/BRC-24/BRC-64 node whose topic manager and lookup
+resolver validate every record independently: OrdLock listing and purchase
+classification, owner epochs, updates, creator decisions, full history, current
+creative, collection-wide live proof sets, and pending-decision resolution. A
+CARS node runs it at
+`https://backend.93913ed6b421f18f80e669c61239a690.projects.babbage.systems`,
+holding the replayed confirmed namespace plus every live write since. Scheduled
+`npm run overlay:shadow` rounds compare it against the public reader and have
+been clean. The local LARS node under `backend/` remains a disposable rebuild
+and development target rather than a mirror.
 
-The browser write path now queues every wallet-accepted collection and
-lifecycle transaction to the local overlay using the same verified Atomic
-BEEF. It treats submit as a processing acknowledgment, polls exact hydrated
-outputs, persists provisional/indexed/retrying/failed delivery state, and
-retries outages without changing the wallet action's success. Updates require
-both state output 0 and record output 1. Local Vite development uses
-localhost:8080; production builds require an explicit HTTPS overlay URL and
-therefore never call a visitor's localhost. The live wallet-to-LARS canary has since
-passed, and GorillaPool remains the production discovery and fallback path
-until a deployed shadow node has been replayed and observed without unexplained
-divergence.
+Opening a collection also schedules one background shadow read that projects
+the same collection from the overlay and records whether the two agree. Nothing
+it produces reaches the screen.
 
-The 2026-08-02 local checkpoint has only the required Adinals MySQL, Mongo, and
-overlay containers running. Health and service registration pass, the populated
-production-fixture smoke replay remains idempotent with 11 already-present
-transactions and a 19-output collection-live proof, and the reusable client
-passes a live duplicate submit plus hydrated exact-output lookup. No new wallet
-transaction was created or broadcast for that check.
-
-The frontend proof adapter now reconstructs semantic state from hydrated
-overlay formulas while a separate adapter normalizes the current public reader.
-Four consecutive `npm run overlay:parity` runs pass across all five discovered
-collections and 20 canonical ads: live membership, current outpoints and owners,
-proposal state, creative text or image bytes/source, collection rules,
-expiration, and display eligibility agree with the current public reader. The
-two retained complete vectors also match ownership history, owner epoch, and
-final listing state. This remains shadow validation and does not switch
-production reads.
-
-`npm run overlay:shadow` runs parity and confirmed reconciliation together as
-one repeatable shadow round, retains a JSON report per round plus an appended
-history line, keeps the exact transcript of any failed command, and exits
-non-zero on a divergent or unreachable overlay. Two scheduled rounds on
-2026-08-02 were clean, and a deliberately failing overlay was recorded as
-divergent with both transcripts retained.
-
-`npm run overlay:reconcile` is the confirmed-only recovery path for marketplace
-spends created elsewhere or writes missed when a browser closes. It combines
-independently proven predecessor/spender transactions, submits through the
-normal Topic Manager, and waits for exact successor visibility. Its first full
-live pass checked all 18 current states with zero failures and no missing
-confirmed spends. Unconfirmed spends are deliberately left to immediate browser
-submission or a later confirmed pass.
-
-The first real local browser attempt minted production Ad #4 at
-`4eeb833ffd469fb9952385d7659f9c1a63fc36658c9d2c3d7ab2298ebab4c7e0_0`.
-The wallet broadcast and GorillaPool/public-reader checks passed, increasing
-the public namespace inventory to 19 mints, but LARS exact lookup remained
-empty and received no `/submit` for that transaction. The canary therefore has
-not passed. The main receipt now displays local-overlay state separately from
-GorillaPool indexing and follows background queue transitions; reload the local
-client before the next check. Startup now also recreates a missing queue entry
-from the accepted publication record and retained Atomic BEEF, without relying
-on a public indexer or weakening overlay validation. A second hard refresh did
-not recover this live mint, so immediate browser delivery remains an open
-defect. A scoped confirmed-only backfill passed with 16 existing transactions
-and zero failures; it correctly skipped still-unconfirmed Ad #4 and remains the
-eventual recovery path after confirmation.
-
-Local development now routes overlay calls through the same-origin
-`/adinals-overlay` Vite proxy to port 8080. The accepted publication path awaits
-its first delivery cycle and reports the actual overlay result, avoiding a
-silent fire-and-forget request while preserving wallet success.
-The first post-proxy refresh found no retained Ad #4 queue/BEEF row to replay,
-so that existing mint still awaits confirmed backfill and does not count as a
-successful browser proxy canary.
-
-Ad #5 then exposed the browser-only cause: native `fetch` was invoked with the
-overlay client as its receiver, and Brave rejected it as an illegal invocation
-before HTTP. The client now invokes `globalThis.fetch` through a wrapper, with
-a regression test. Ad #5's BEEF remains in the durable retry queue.
-
-The retained retry then passed without another transaction: Brave submitted
-the 2,329-byte BEEF through the same-origin proxy, LARS responded in 573 ms,
-and exact output 0 became visible with hydrated BEEF before confirmation. The
-live immediate browser-to-overlay canary is now complete.
-After confirmation, the scoped backfill admitted Ad #4 as exactly one new
-transaction with zero failures, and LARS now returns its exact output 0 with
-hydrated BEEF. Confirmed eventual recovery is therefore proven. Both canary
-mints are now confirmed and public, so the confirmed namespace is five
-collections, 20 mints, 38 lifecycle transitions, 12 sibling updates, and eight
-decisions.
-
-A CARS shadow node is now deployed at
-`https://backend.93913ed6b421f18f80e669c61239a690.projects.babbage.systems`.
-`npm run overlay:cars:preflight` verifies offline that the packaged backend has
-no import outside `backend/src` and no undeclared dependency, and
-`npm run overlay:cars:build` writes only a local artifact. Because a cloud node
-starts with an empty database, releasing it was not the last step: the confirmed
-namespace was replayed into it and verified with the same shadow harness the
-local node uses. It matches the public reader across every discovered
-collection and canonical ad, and reconciliation reports no missing confirmed
-spends. GorillaPool remains the production discovery and fallback path.
-
-Reads have not moved. The product still hydrates from GorillaPool and the
-derived public reader; the overlay is a write path plus a background comparison.
-Opening a collection now schedules one shadow read that projects the same
-collection from the overlay and records whether it agrees, without affecting
-anything on screen. Overlay-first hydration and discovery are later stages
-described in [OVERLAY.md](OVERLAY.md); creative images will keep loading from
-public content hosts, with the overlay supplying the hash that makes them
-verifiable.
-
-Browser overlay delivery now targets that node. A Metanet Desktop collection
-published from local development posted its BEEF cross-origin over HTTPS with
-no proxy and reached `indexed`, while the local LARS node correctly holds
-nothing for it. `.env.production` is committed so a static host without
-dashboard environment variables still builds with the endpoint configured; a
-local `.env` overrides it and stays out of Git. Overlay reads remain
-unchanged: the product still reads through the derived public reader.
+Reads have not moved, and moving them is the current direction rather than a
+finished state. The reason is not speed: BEEF lets a client verify ownership,
+signatures, and history by SPV instead of trusting a service. One measured
+consequence already shows the gap. A newly published image ad is served by the
+overlay immediately, while public content hosts return 404 until the
+transaction confirms, and the derived reader fails the entire ad rather than
+part of it. The staged plan, its prerequisites, and the federation work that
+would remove the last discovery dependency are in
+[OVERLAY.md](OVERLAY.md).
 
 ## Roadmap
 

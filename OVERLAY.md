@@ -682,24 +682,41 @@ Verified state as of 2026-08-02, end of session:
   overlay against the rendered reader on every collection view, and match.
 - 178 application tests, 33 backend tests, typecheck, script self-test, and the
   production build all pass.
-- Untested: a large image mint, a large image update, and overlay-first reads.
+- A complete image lifecycle passes on current code: mint, listing, purchase,
+  owner update, and creator approval, including 126 KB BEEF submissions.
+- Untested: overlay-first reads, proof upgrade for records ingested while
+  unconfirmed, and any image sequence repeated on Yours Wallet with this code.
 
 Implement the next phase:
 
-1. Keep running scheduled `npm run overlay:shadow` rounds against the CARS
-   endpoint and preserve the exact divergence reports; investigate any non-clean
-   round before moving on. The local node is no longer a mirror and comparing
-   the two proves nothing until a second peer makes GASP synchronization real.
-2. Watch the CARS balance. Top-ups are capped at 10,000 satoshis each and the
-   CLI reports success even when the cloud rejects the payment, so read the
-   balance back after every attempt. An exhausted node degrades browser
-   receipts to `retrying` without affecting wallet broadcasts.
-3. Confirm the Metanet Desktop collection path end to end for a mint, update,
-   and decision now that its funding input is accepted.
-4. Keep GorillaPool as fallback and do not switch production reads until the
-   shadow node's parity has no unexplained divergence over a longer period.
-5. Update OVERLAY.md, README.md, and BRC100_COLLECTION_MATRIX.md with exact
-   results.
+The direction is to read from the overlay and keep the current reader only as a
+fallback, for the reasons in "Why reads should move to the overlay". Four things
+stand in the way, in the order they should be taken.
+
+1. **Upgrade proofs after confirmation.** A record submitted live is stored as
+   unconfirmed BEEF and nothing re-ingests it once its block lands, so the node
+   accumulates evidence that proves ancestry but not inclusion. That undercuts
+   the SPV argument for reading from it. Reconciliation already fetches
+   confirmed proofs, so this is a pass that re-submits proof-anchored BEEF for
+   records the node holds unconfirmed.
+2. **Serve creatives from BEEF.** Closes the one-block window during which a new
+   image ad is invisible to embeds and agents, and removes the content-host
+   dependency from the render path. The derived reader should also stop failing
+   an entire ad when creative bytes are missing, which is a worthwhile fix on
+   its own.
+3. **Read overlay-first with fallback on empty.** Fallback must trigger on an
+   empty overlay result as well as on an error, because a node that never
+   ingested a record answers truthfully with nothing and rendering that as
+   absence would be worse than the lag it replaces.
+4. **Federate.** Discovery is the last dependency that fallback cannot cover:
+   an Adinal sold outside this application reaches the node only through
+   reconciliation against GorillaPool. SHIP, SLAP, and GASP remove that, and
+   they need a second node running `tm_adinals`.
+
+Alongside those: keep scheduled `npm run overlay:shadow` rounds against the CARS
+endpoint and retain divergence reports; watch the CARS balance, since top-ups
+cap at 10,000 satoshis and the CLI reports success even when the cloud rejects
+one; and keep all three documents current with exact results.
 
 If LARS is stopped, start only the required services; the old SkateSV, Space
 Payments, and template UI containers were stopped without deleting their data:
@@ -749,8 +766,11 @@ submission it has received. At that moment GorillaPool's content endpoint still
 returned no image, so the creative was retrievable with proof from the overlay
 while the public content host was still propagating it.
 
-Still untested at that scale: a large image mint, a large image update, which is
-the only two-output case, and either on Yours Wallet with the current code.
+A complete image lifecycle has since followed on the same code: mint, listing,
+purchase across wallets, owner update, and creator approval, with both outputs
+of the update admitted at 126,499 bytes of BEEF each. Image handling is
+therefore proven end to end at production sizes. What has not been repeated at
+that scale is the same sequence on Yours Wallet with the current code.
 
 ## Why reads should move to the overlay
 
