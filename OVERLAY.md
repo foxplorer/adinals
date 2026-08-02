@@ -775,10 +775,20 @@ the same projection from the overlay, compares them with the parity suite's own
 reaches the view. A missing baseline is recorded as `reference-unavailable`
 rather than blamed on the overlay, both reads are bounded by a 12-second
 timeout, and every outcome resolves instead of throwing. Results are retained in
-memory and announced as `adinals-overlay-shadow-read` events. The comparison
-module deliberately avoids importing `@1sat/templates` so it can be unit-tested
-under Node; `src/readers/overlayShadowReadClient.ts` performs the wiring that
-cannot be.
+memory, announced as `adinals-overlay-shadow-read` events, and reachable from
+the console as `adinalsOverlayShadowReads()`. Every outcome is logged, a match
+included, because a silent success cannot be distinguished from a comparison
+that never ran. The comparison module deliberately avoids importing
+`@1sat/templates` so it can be unit-tested under Node;
+`src/readers/overlayShadowReadClient.ts` performs the wiring that cannot be.
+
+The first live shadow read matched, reporting collection
+`55acb61e975b1cd6d530c3519055ee57b68bf7ab251ac6fb0241b06261942c9b_0` in 4,318
+milliseconds against the deployed CARS node. The two reads run sequentially so
+that a failed baseline skips the overlay entirely, so that figure is both round
+trips plus any cold start in the derived reader. It is background work today;
+before stage two puts either read on the render path, the slower half needs
+identifying.
 
 **Stage 2, not started: overlay-first hydration.** Ad and collection detail
 views read from the overlay and fall back to the current reader. The fallback

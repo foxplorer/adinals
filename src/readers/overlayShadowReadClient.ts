@@ -4,8 +4,15 @@ import { readOverlayLifecycleProjection } from './overlayReader.ts'
 import {
   readOverlayShadowComparison,
   recordOverlayShadowRead,
+  retainedOverlayShadowReads,
   type OverlayShadowReadResult,
 } from './overlayShadowRead.ts'
+
+// Retained comparisons are reachable from the console during the shadow period.
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).adinalsOverlayShadowReads =
+    retainedOverlayShadowReads
+}
 
 /**
  * Wires the shadow comparison to the configured overlay. Separate from
@@ -19,7 +26,10 @@ export async function runOverlayShadowRead(
   origin: string,
   options: { now?: Date; timeoutMs?: number } = {},
 ): Promise<OverlayShadowReadResult | null> {
-  if (!ADINALS_OVERLAY_URL) return null
+  if (!ADINALS_OVERLAY_URL) {
+    console.info('Overlay shadow read skipped: no overlay endpoint is configured')
+    return null
+  }
   const client = new AdinalsOverlayClient(ADINALS_OVERLAY_URL, {
     topic: ADINALS_NAMESPACE.overlayTopic,
   })

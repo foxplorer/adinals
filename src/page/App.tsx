@@ -1325,9 +1325,12 @@ export function AdLab() {
     let cancelled = false
     const timer = window.setTimeout(() => {
       void runOverlayShadowRead(selected).catch(() => null).then((result) => {
-        if (!cancelled && result?.status === 'diverged') {
-          console.warn('Overlay shadow read diverged', result.origin, result.errors)
-        }
+        if (cancelled || !result) return
+        // Every outcome is reported during the shadow period: a silent match is
+        // indistinguishable from a comparison that never ran.
+        const summary = `Overlay shadow read ${result.status} in ${result.durationMs}ms`
+        if (result.status === 'match') console.info(summary, result.origin)
+        else console.warn(summary, result.origin, result.errors)
       })
     }, OVERLAY_SHADOW_READ_DELAY_MS)
     return () => {
