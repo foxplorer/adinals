@@ -27,8 +27,10 @@ incomplete.
 As of 2026-08-02, `@bsv/lars` 1.5.8 is installed in the root development
 dependencies. The repository contains `deployment-info.json` plus an isolated
 `backend/` package registering `tm_adinals` and `ls_adinals`. The first local
-configuration runs the backend only on BSV mainnet; there is deliberately no
-CARS project configuration yet.
+configuration runs the backend only on BSV mainnet. A second, prepared
+`adinals-shadow` CARS configuration now exists with no project identifier, so
+its release commands fail closed until an operator deliberately creates and
+funds a project.
 
 The topic manager now admits valid production `collection` outputs after
 independently checking the canonical inscription and MAP envelope, exact
@@ -169,6 +171,28 @@ successor output 0. Unconfirmed spends remain untouched. Its automated suite
 covers successful ingestion, exact-output delay, idempotency, and partial
 reader outage. The first full live pass checked all 18 current states with zero
 failures and found zero missing confirmed spends to submit.
+
+`npm run overlay:shadow` is the repeatable shadow-period harness. It checks
+`/health`, runs parity and confirmed reconciliation in the same round even when
+the first one fails, and writes one report per round to `reports/overlay-shadow/`
+plus an appended `history.jsonl` summary line. Clean rounds retain only their
+JSON summaries; a failing round retains the exact stdout and stderr of every
+failed command, including the parity divergence dump. `--rounds` and
+`--interval` make one cron entry or one long local watch equivalent. An
+unreachable overlay is recorded as `overlay-unavailable` rather than silently
+skipped, and any non-clean round exits non-zero.
+
+On 2026-08-02 the local shadow period recorded four consecutive clean parity
+runs and four clean reconciliation runs: two manual pairs and two scheduled
+harness rounds two minutes apart. Both live canary mints are now confirmed and
+public, so parity now covers 5 collections and 20 canonical ads, with the
+retained collection at 5 ads in both the overlay and the current public reader.
+Every reconciliation pass checked 20 current states and found zero confirmed
+external spends to submit and zero failures. The harness failure path was
+verified separately against a simulated overlay that answered `/health` and
+failed every other request: the round was recorded as `divergent`, both command
+transcripts were retained, and the command exited non-zero. Report files stay
+out of Git; only their summaries belong in this document.
 
 The first real browser canary on 2026-08-02 minted production Ad #4 at
 `4eeb833ffd469fb9952385d7659f9c1a63fc36658c9d2c3d7ab2298ebab4c7e0_0`
@@ -314,7 +338,17 @@ npm run overlay:backfill
 npm run overlay:smoke
 npm run overlay:parity
 npm run overlay:reconcile
+npm run overlay:shadow -- --rounds=4 --interval=900
+npm run overlay:cars:preflight
+npm run overlay:cars:config
+npm run overlay:cars:build
 ```
+
+`overlay:shadow`, `overlay:parity`, and `overlay:reconcile` all honor
+`ADINALS_OVERLAY_URL`, so the same commands verify a remote shadow node once one
+exists. `overlay:cars:preflight` and `overlay:cars:config` are offline;
+`overlay:cars:build` only writes a local artifact file. None of them contacts a
+CARS Cloud, creates a project, or uploads a release.
 
 LARS 1.5.8 starts on localhost by default; use its explicit `--with-ngrok` flag
 only when a public development tunnel is actually wanted. `overlay:start`
@@ -584,14 +618,18 @@ production chains. Semantic `history`, `adCurrent`, `collectionLive`, and
 pending-decision resolution also pass their production and synthetic gates.
 Next:
 
-1. reload the local Vite client, observe whether the retained mint queue replays,
-   and, only if necessary, run one accepted wallet action while verifying the
-   separate receipt advances from provisional to exact-output indexed without
-   affecting the existing GorillaPool receipt;
-2. schedule repeated namespace parity and confirmed reconciliation during the
-   local shadow period and retain divergence reports; and
-3. deploy one CARS node in shadow mode after those repeated passes, while
-   keeping derived embed JSON in the separate reader layer.
+The live unconfirmed browser submission canary, repeated namespace parity, and
+confirmed reconciliation have all passed, and the CARS shadow configuration is
+prepared but undeployed. Next:
+
+1. continue scheduled `npm run overlay:shadow` rounds through the local shadow
+   period and keep every divergence report;
+2. obtain and fund a CARS mainnet project, release the prepared
+   `adinals-shadow` configuration, and replay the confirmed namespace into the
+   new node before trusting any of its answers; and
+3. compare the shadow node against both the local node and the current public
+   reader before pointing any production build at it, while keeping derived
+   embed JSON in the separate reader layer.
 
 The topic manager stays fail closed for every transition that has not reached
 its gate.
@@ -663,24 +701,42 @@ Verified state as of 2026-08-02:
 - `src/readers/overlayReader.ts` derives verified collection membership,
   ownership history, current owner, owner epoch, listing, proposal state,
   creative, expiration, and display eligibility from overlay BEEF formulas.
-- Two consecutive `npm run overlay:parity` runs pass against the current public
-  reader for all 5 collections and 18 canonical ads, including image byte
-  hashes. The two complete lifecycle vectors also pass deep history parity.
-- `npm run overlay:reconcile` is implemented and automated. Its confirmed-only
-  live namespace scan checked all 18 current states with 0 submissions needed
-  and 0 failures.
+- Four consecutive `npm run overlay:parity` runs pass against the current public
+  reader for all 5 collections and 20 canonical ads, including image byte
+  hashes. Both live canary mints are confirmed and included. The two complete
+  lifecycle vectors also pass deep history parity.
+- `npm run overlay:reconcile` is implemented and automated. Four confirmed-only
+  live namespace scans each checked all 20 current states with 0 submissions
+  needed and 0 failures.
+- `npm run overlay:shadow -- --rounds=N --interval=<seconds>` runs both checks
+  per round, writes `reports/overlay-shadow/` JSON plus `history.jsonl`, retains
+  full transcripts only for failed commands, and exits non-zero on any
+  divergent or unavailable round. Two scheduled rounds and a simulated
+  failing-overlay round were both verified.
+- The confirmed dry-run inventory is now 5 collections, 20 mints, 38 lifecycle
+  transitions, 12 updates, and 8 decisions, that is 71 transactions, with no
+  unresolved confirmed spend links.
+- CARS is prepared and undeployed: `@bsv/cars-cli` 1.2.9 is pinned, the
+  `adinals-shadow` mainnet backend-only configuration exists with no
+  `projectID` so releases fail closed, `npm run overlay:cars:preflight` reports
+  a clean packaging boundary, and one local 10.9 MB artifact was built,
+  inspected, and deleted. Nothing was uploaded and no project exists.
+- All 32 application test files (139 tests), 33 backend tests, backend
+  typecheck, the script self-test, and the production Vite build pass.
 
 Implement the next phase:
 
-1. Reload the local client, check whether the retained mint queue replays, and
-   rerun the live wallet-to-overlay canary only if needed; require the separate
-   overlay receipt and exact-output lookup to reach indexed.
-2. Schedule repeated namespace parity and confirmed reconciliation during
-   local shadow operation; preserve exact divergence reports.
-3. Keep GorillaPool as fallback and do not switch production reads until parity
-   has no unexplained divergence.
-4. Prepare one CARS shadow deployment only after the live wallet canary and
-   repeated local runs remain clean.
+1. Keep running scheduled `npm run overlay:shadow` rounds locally and preserve
+   the exact divergence reports; investigate any non-clean round before moving
+   on.
+2. With explicit permission and real funds, create and fund a CARS mainnet
+   project, set its `projectID` on `adinals-shadow`, build, and release.
+3. Replay history into the new node with `ADINALS_OVERLAY_URL=https://<host>
+   npm run overlay:backfill` before trusting it, then run the same shadow
+   harness against that endpoint.
+4. Keep GorillaPool as fallback and do not switch production reads or set
+   `VITE_ADINALS_OVERLAY_URL` in a production build until the shadow node's
+   parity has no unexplained divergence.
 5. Update OVERLAY.md, README.md, and BRC100_COLLECTION_MATRIX.md with exact
    results.
 
@@ -693,6 +749,100 @@ Do not clear local-data unless a clean rebuild of the disposable overlay is
 genuinely required. Do not include generated keys, database state, wallet-local
 references, or unbroadcast Atomic BEEF in a public commit.
 ```
+
+## Admitted transaction coverage
+
+A shadow node is only useful if every kind of Adinals transaction reaches it, so
+the local database was inventoried directly on 2026-08-02. It holds 71 distinct
+transactions and 83 admitted outputs: 5 collections, 20 mint records, 16 OrdLock
+listings, 22 successor ownership states, 12 sibling `adUpdate` records, and 8
+creator decisions. Thirty-eight outputs are marked spent and one output is still
+unconfirmed.
+
+Walking those spends from predecessor to successor classifies all 38 confirmed
+transitions with none unresolved: 16 listings, 9 purchases, 1 cancellation, and
+12 updates. There are no plain ownership transfers in the confirmed production
+namespace yet, so transfer admission currently rests on its backend regression
+test rather than a live mainnet vector. Every other transition type is proven
+against real transactions, and the confirmed replay reports zero failures and no
+unresolved spend links.
+
+One observation from that inventory: the optional `lifecycleKind`,
+`predecessorOutpoint` storage annotations are never populated, because
+`classifyLifecycleTransition` runs at admission against the admitted
+transaction's own BEEF. Ownership epochs, listings, purchases, and updates are
+still derived correctly at query time, which is what the passing parity runs
+verify, but the stored rows cannot be filtered by transition kind without
+re-deriving. This is a storage-annotation gap, not an admission or resolution
+defect.
+
+## CARS shadow preparation
+
+The release mechanism itself is simple: `cars build` packages a local artifact
+and `cars release now` uploads it. The work that must be finished first is the
+project account and the new node's ingestion, not the upload.
+
+Prepared on 2026-08-02, with nothing deployed:
+
+- `@bsv/cars-cli` 1.2.9 is pinned in the root development dependencies.
+- `deployment-info.json` now carries a second configuration, `adinals-shadow`:
+  provider CARS, mainnet, `https://cars.babbage.systems`, and `deploy:
+  ["backend"]`. LARS selects its own configuration by provider, so local
+  development is unaffected and `cars config ls` lists both.
+- The configuration deliberately has **no** `projectID`. Every CARS release,
+  logs, domain, and billing command fails closed until an operator sets one.
+- `npm run overlay:cars:preflight` proves the packaging boundary offline. It
+  checks the schema, the single LARS/CARS configuration pair, matching mainnet
+  networks, an HTTPS cloud URL, a backend-only deploy list, that every
+  registered topic manager and lookup service path exists under `./backend/`,
+  and that no backend runtime file imports outside `backend/src` or uses a
+  package the backend `package.json` does not declare. It currently reports 2
+  registered services, 12 runtime files, 6 test files, a clean boundary, and the
+  intentional missing-project warning.
+- `npm run overlay:cars:build` produced one local 10.9 MB artifact with 4,353
+  entries: `deployment-info.json`, the root `package.json`/`package-lock.json`,
+  and `backend/` including its reinstalled dependencies. The root `src`,
+  `local-data`, LARS keys, and wallet fixtures are absent, matching the same
+  boundary LARS enforces. The artifact was inspected and deleted; artifacts and
+  shadow reports are ignored by Git.
+
+The remaining steps all require explicit operator permission and real funds:
+
+1. Open a BRC-100 wallet first. The CARS CLI authenticates with
+   `new WalletClient('auto', 'localhost')`, so Metanet Desktop must be running
+   and unlocked before any cloud command; the alternative is an explicit
+   `--key` with hosted wallet storage. Then run
+   `npx cars config edit adinals-shadow` to select the cloud, create or choose
+   the mainnet project, and record its `projectID`, and fund it with
+   `npx cars project topup adinals-shadow`. The finished entry looks exactly
+   like the AdventureSV template's CARS block, with an Adinals project
+   identifier.
+2. `npm run overlay:cars:build` followed by `cars release now adinals-shadow`,
+   then `cars project info` until the backend domain reports online with SSL.
+3. Ingest history into the new node. A CARS project starts with an empty
+   database, so the shadow node knows nothing until it is replayed:
+   `ADINALS_OVERLAY_URL=https://<shadow-host> npm run overlay:backfill --
+   --dry-run`, then the same command without `--dry-run`. The 2026-08-02
+   confirmed inventory is 5 collections, 20 mint origins, 38 lifecycle
+   transitions, 12 sibling updates, and 8 decisions, which is 71 submitted
+   transactions with no unresolved confirmed spend links.
+4. `ADINALS_OVERLAY_URL=https://<shadow-host> npm run overlay:shadow` for the
+   same repeated parity and reconciliation the local node passes, keeping the
+   local node running as the comparison baseline.
+5. Only then consider a production build with
+   `VITE_ADINALS_OVERLAY_URL=https://<shadow-host>` so browsers deliver live
+   BEEF to the shadow node. Confirm the hosted node's CORS response and binary
+   `/submit` acceptance from the browser before relying on it, exactly as the
+   local proxy canary did.
+
+GorillaPool stays the authoritative production discovery and fallback path
+throughout. Two build-boundary items to watch on the first cloud build: the
+artifact carries the root `package.json`, whose frontend dependency tree
+includes the `@1sat/types` extensionless ESM import that Node cannot execute
+directly, and the backend ships TypeScript sources that the cloud image
+compiles the same way LARS does. The backend runtime imports neither
+`@1sat/templates` nor anything from the root `src`, so a failure there would be
+an installation-level surprise rather than a runtime dependency.
 
 ## CARS gate
 

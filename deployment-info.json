@@ -19,6 +19,15 @@
       "run": [
         "backend"
       ]
+    },
+    {
+      "name": "adinals-shadow",
+      "network": "mainnet",
+      "provider": "CARS",
+      "CARSCloudURL": "https://cars.babbage.systems",
+      "deploy": [
+        "backend"
+      ]
     }
   ]
 }

@@ -14,6 +14,12 @@ backend/dist-test/
 local-data/
 .lars-keys.json
 
+# Local shadow-period observations and CARS release artifacts. Divergence
+# reports are retained on the operator's machine; only their summaries belong
+# in OVERLAY.md.
+reports/
+cars_artifact_*.tgz
+
 # Local environment overrides (the documented template is safe to commit)
 .env
 .env.*

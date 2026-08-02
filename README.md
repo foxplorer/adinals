@@ -147,10 +147,10 @@ outputs, persists provisional/indexed/retrying/failed delivery state, and
 retries outages without changing the wallet action's success. Updates require
 both state output 0 and record output 1. Local Vite development uses
 localhost:8080; production builds require an explicit HTTPS overlay URL and
-therefore never call a visitor's localhost. The live wallet-to-LARS canary is
-still pending, and GorillaPool remains the production discovery and fallback
-path while the live canary and repeated local shadow observation remain
-incomplete.
+therefore never call a visitor's localhost. The live wallet-to-LARS canary has since
+passed, and GorillaPool remains the production discovery and fallback path
+until a deployed shadow node has been replayed and observed without unexplained
+divergence.
 
 The 2026-08-02 local checkpoint has only the required Adinals MySQL, Mongo, and
 overlay containers running. Health and service registration pass, the populated
@@ -161,13 +161,20 @@ transaction was created or broadcast for that check.
 
 The frontend proof adapter now reconstructs semantic state from hydrated
 overlay formulas while a separate adapter normalizes the current public reader.
-Two consecutive `npm run overlay:parity` runs pass across all five discovered
-collections and 18 canonical ads: live membership, current outpoints and owners,
+Four consecutive `npm run overlay:parity` runs pass across all five discovered
+collections and 20 canonical ads: live membership, current outpoints and owners,
 proposal state, creative text or image bytes/source, collection rules,
 expiration, and display eligibility agree with the current public reader. The
 two retained complete vectors also match ownership history, owner epoch, and
 final listing state. This remains shadow validation and does not switch
 production reads.
+
+`npm run overlay:shadow` runs parity and confirmed reconciliation together as
+one repeatable shadow round, retains a JSON report per round plus an appended
+history line, keeps the exact transcript of any failed command, and exits
+non-zero on a divergent or unreachable overlay. Two scheduled rounds on
+2026-08-02 were clean, and a deliberately failing overlay was recorded as
+divergent with both transcripts retained.
 
 `npm run overlay:reconcile` is the confirmed-only recovery path for marketplace
 spends created elsewhere or writes missed when a browser closes. It combines
@@ -211,15 +218,28 @@ and exact output 0 became visible with hydrated BEEF before confirmation. The
 live immediate browser-to-overlay canary is now complete.
 After confirmation, the scoped backfill admitted Ad #4 as exactly one new
 transaction with zero failures, and LARS now returns its exact output 0 with
-hydrated BEEF. Confirmed eventual recovery is therefore proven.
+hydrated BEEF. Confirmed eventual recovery is therefore proven. Both canary
+mints are now confirmed and public, so the confirmed namespace is five
+collections, 20 mints, 38 lifecycle transitions, 12 sibling updates, and eight
+decisions.
+
+A CARS shadow deployment is prepared but not deployed. `deployment-info.json`
+carries an `adinals-shadow` mainnet, backend-only configuration with no project
+identifier, so every release command fails closed;
+`npm run overlay:cars:preflight` verifies offline that the packaged backend has
+no import outside `backend/src` and no undeclared dependency, and
+`npm run overlay:cars:build` writes only a local artifact. A cloud node starts
+with an empty database, so releasing it is not the last step: the confirmed
+namespace must be replayed into it with `overlay:backfill` and then verified
+with the same shadow harness before any production build points at it.
 
 ## Roadmap
 
 1. Complete the remaining wallet-restart, image-lifecycle, and emergency-switch
    beta drills, then tag the reference application.
-2. Complete the live local submission canary, schedule repeated namespace
-   parity and confirmed reconciliation, then deploy the
-   BRC-22/BRC-24/BRC-64 service in CARS shadow mode while retaining fallback.
+2. Fund a CARS project, release the prepared BRC-22/BRC-24/BRC-64 shadow node,
+   replay the confirmed namespace into it, and keep the scheduled parity and
+   reconciliation rounds running against both nodes while retaining fallback.
 3. Publish a read-only typed SDK/CLI or MCP interface against a stable
    `api.adinals.com` origin, then add wallet-authorized actions through an
    injected BRC-100 `WalletInterface`; never accept seeds, WIFs, or mnemonics.

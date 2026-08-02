@@ -21,6 +21,10 @@
     "overlay:smoke": "node --experimental-strip-types scripts/overlay-local-smoke.ts",
     "overlay:parity": "vite build --config scripts/vite.overlay-parity.config.ts && node .overlay-parity-dist/overlay-reader-parity.js",
     "overlay:reconcile": "vite build --config scripts/vite.overlay-reconcile.config.ts && node .overlay-reconcile-dist/overlay-reconcile.js",
+    "overlay:shadow": "node --experimental-strip-types scripts/overlay-shadow.ts",
+    "overlay:cars:preflight": "node --experimental-strip-types scripts/overlay-cars-preflight.ts",
+    "overlay:cars:config": "cars config ls",
+    "overlay:cars:build": "cars build adinals-shadow",
     "overlay:test": "npm test --prefix backend",
     "overlay:typecheck": "npm run typecheck --prefix backend",
     "preview": "vite preview --host 0.0.0.0 --port 4176 --strictPort"
@@ -35,6 +39,7 @@
     "react-dom": "18.3.1"
   },
   "devDependencies": {
+    "@bsv/cars-cli": "1.2.9",
     "@bsv/lars": "^1.5.8",
     "@types/react": "18.3.31",
     "@types/react-dom": "18.3.7",
