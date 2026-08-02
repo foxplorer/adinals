@@ -33,6 +33,7 @@ import {
   signDerivedP2PKHInput,
 } from '../wallet/actionSigning.ts'
 import { calculateSigmaAnchorReserve } from './sigmaAnchorReserve.ts'
+import { findAnchorInputIndex, findAnchorOutputIndex } from './anchorOutput.ts'
 import { releaseOnFailure } from './noSendGuard.ts'
 
 const protocolID: WalletProtocol = [1, ADINALS_NAMESPACE.keyProtocol]
@@ -112,11 +113,12 @@ async function createSignedRecord(options: SignedRecordOptions): Promise<Adinals
   const unsigned = buildUnsignedAdinalRecordScript(ownerPublicKey, options.map, options.content)
   const anchorSatoshis = calculateSigmaAnchorReserve(unsigned.toBinary().length)
 
+  const anchorScriptHex = new P2PKH().lock(PublicKey.fromString(anchorPublicKey).toAddress()).toHex()
   const createAnchorAction = () => options.wallet.createAction({
     description: `Prepare Adinals ${options.kind} fee reserve (unused value returns)`,
     labels: [ADINALS_NAMESPACE.actionLabel],
     outputs: [{
-      lockingScript: new P2PKH().lock(PublicKey.fromString(anchorPublicKey).toAddress()).toHex(),
+      lockingScript: anchorScriptHex,
       satoshis: anchorSatoshis,
       outputDescription: `Temporary Adinals ${options.kind} fee reserve`,
     }],
@@ -125,12 +127,15 @@ async function createSignedRecord(options: SignedRecordOptions): Promise<Adinals
   const anchorAttempt = await createAndCompleteNoSendAction(options.wallet, createAnchorAction)
   const anchorCreated = anchorAttempt.created
   const anchor = anchorAttempt.completed
+  // A wallet may append its own change, so the reserve is found by its exact
+  // script and value rather than assumed to sit at index 0.
+  const anchorVout = findAnchorOutputIndex(anchor.tx, anchorScriptHex, anchorSatoshis)
   let recordReference = ''
   try {
     const signed = await appendWalletSigma(
       options.wallet,
       unsigned,
-      { txid: anchor.txid, vout: 0 },
+      { txid: anchor.txid, vout: anchorVout },
       protocolID,
       options.signerKeyID,
     )
@@ -138,7 +143,7 @@ async function createSignedRecord(options: SignedRecordOptions): Promise<Adinals
       description: options.kind === 'mint' ? 'Rehearse Adinals ad mint' : 'Rehearse Adinals decision',
       labels: [ADINALS_NAMESPACE.actionLabel],
       inputBEEF: anchor.tx,
-      inputs: [{ outpoint: `${anchor.txid}.0`, inputDescription: `Temporary Adinals ${options.kind} fee reserve`, unlockingScriptLength: 108 }],
+      inputs: [{ outpoint: `${anchor.txid}.${anchorVout}`, inputDescription: `Temporary Adinals ${options.kind} fee reserve`, unlockingScriptLength: 108 }],
       outputs: [{
         lockingScript: signed.toHex(),
         satoshis: 1,
@@ -163,16 +168,21 @@ async function createSignedRecord(options: SignedRecordOptions): Promise<Adinals
         trustSelf: 'known',
       },
     })
-    const recordAttempt = await createAndCompleteNoSendAction(options.wallet, createRecordAction, anchor.tx, async (transaction) => ({
-      0: { unlockingScript: await signDerivedP2PKHInput(options.wallet, transaction, 0, protocolID, anchorKeyID) },
-    }))
+    const recordAttempt = await createAndCompleteNoSendAction(options.wallet, createRecordAction, anchor.tx, async (transaction) => {
+      const anchorInput = findAnchorInputIndex(transaction, anchor.txid, anchorVout)
+      return {
+        [anchorInput]: {
+          unlockingScript: await signDerivedP2PKHInput(options.wallet, transaction, anchorInput, protocolID, anchorKeyID),
+        },
+      }
+    })
     const created = recordAttempt.created
     const completed = recordAttempt.completed
     recordReference = created.signableTransaction?.reference ?? ''
     const transaction = Transaction.fromAtomicBEEF(completed.tx)
     const output = transaction.outputs[0]
     if (!output || output.lockingScript.toHex() !== signed.toHex()) throw new Error('Wallet changed the fixed Adinals record output.')
-    const verification = verifyAdinalRecordScript(output.lockingScript, unsigned, { txid: anchor.txid, vout: 0 }, options.map)
+    const verification = verifyAdinalRecordScript(output.lockingScript, unsigned, { txid: anchor.txid, vout: anchorVout }, options.map)
     if (!verification.valid || verification.signerAddress !== options.expectedSignerAddress) {
       throw new Error(`Adinals ${options.kind} verification failed: ${verification.errors.join('; ')}`)
     }
@@ -183,7 +193,7 @@ async function createSignedRecord(options: SignedRecordOptions): Promise<Adinals
       txid: completed.txid,
       outpoint: `${completed.txid}_0`,
       anchorTxid: anchor.txid,
-      anchorOutpoint: `${anchor.txid}_0`,
+      anchorOutpoint: `${anchor.txid}_${anchorVout}`,
       rawtx: transaction.toHex(),
       atomicBeef: completed.tx,
       basket: options.basket,

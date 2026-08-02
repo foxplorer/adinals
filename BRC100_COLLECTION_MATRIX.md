@@ -78,6 +78,10 @@ change the Adinals transaction or authorization rules.
   published or aborted, while the wallet still counts both in its displayed
   balance. One abandoned collection rehearsal can therefore make most of a
   balance unspendable, which looks like a wallet fault and is not one.
+- Wallets do not preserve declared output or input positions. Reading the SIGMA
+  fee reserve from output 0, or signing the anchor spend at input 0, works with
+  Yours Wallet and fails against a wallet that adds its own funding. Both are
+  now located by content rather than position.
 - Yours Wallet funds a collection by spending only the sized SIGMA anchor, while
   Metanet Desktop adds its own funding input after it. Both are protocol-valid:
   version 3 anchors the signature to the outpoint spent at input 0 and ignores

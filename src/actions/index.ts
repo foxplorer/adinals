@@ -25,6 +25,7 @@ import {
 import { findByteIdenticalOneSatOutputs } from '../protocol/transactionChecks.ts'
 import { createAndCompleteNoSendAction, signDerivedP2PKHInput } from '../wallet/actionSigning.ts'
 import { calculateSigmaAnchorReserve } from './sigmaAnchorReserve.ts'
+import { findAnchorInputIndex, findAnchorOutputIndex } from './anchorOutput.ts'
 
 export type { CreateCollectionInput } from '../protocol/collectionMetadata.ts'
 
@@ -130,13 +131,16 @@ export async function createAdinalsCollection(
   }
   const anchorCreated = anchorAttempt.created
   const anchor = anchorAttempt.completed
+  // A wallet may append its own change, so the reserve is found by its exact
+  // script and value rather than assumed to sit at index 0.
+  const anchorVout = findAnchorOutputIndex(anchor.tx, anchorScript.toHex(), anchorSatoshis)
 
   let collectionReference = ''
   try {
     const builtSignedScript = await appendWalletSigma(
       wallet,
       unsignedScript,
-      { txid: anchor.txid, vout: 0 },
+      { txid: anchor.txid, vout: anchorVout },
       protocolID,
       collectionKeyID,
     )
@@ -166,7 +170,7 @@ export async function createAdinalsCollection(
       labels: [ADINALS_NAMESPACE.actionLabel],
       inputBEEF: anchor.tx,
       inputs: [{
-        outpoint: `${anchor.txid}.0`,
+        outpoint: `${anchor.txid}.${anchorVout}`,
         inputDescription: 'Temporary Adinals collection fee reserve',
         unlockingScriptLength: 108,
       }],
@@ -196,14 +200,15 @@ export async function createAdinalsCollection(
       createCollectionAction,
       anchor.tx,
       async (transaction) => {
+        const anchorInput = findAnchorInputIndex(transaction, anchor.txid, anchorVout)
         const unlockingScript = await signDerivedP2PKHInput(
           wallet,
           transaction,
-          0,
+          anchorInput,
           protocolID,
           anchorKeyID,
         )
-        return { 0: { unlockingScript } }
+        return { [anchorInput]: { unlockingScript } }
       },
     )
     const collectionCreated = collectionAttempt.created
@@ -237,7 +242,7 @@ export async function createAdinalsCollection(
     const verification = verifyCollectionScript(
       output.lockingScript,
       unsignedScript,
-      { txid: anchor.txid, vout: 0 },
+      { txid: anchor.txid, vout: anchorVout },
       map,
     )
     if (!verification.valid) {
@@ -257,7 +262,7 @@ export async function createAdinalsCollection(
       outpoint: `${collection.txid}_${outputIndex}`,
       outputIndex,
       anchorTxid: anchor.txid,
-      anchorOutpoint: `${anchor.txid}_0`,
+      anchorOutpoint: `${anchor.txid}_${anchorVout}`,
       rawtx: transaction.toHex(),
       atomicBeef: collection.tx,
       noSendChange: collection.noSendChange ?? [],

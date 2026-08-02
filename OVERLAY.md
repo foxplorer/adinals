@@ -835,6 +835,28 @@ shapes. The helper deliberately imports nothing from `@1sat/templates` so it
 runs under Node's test runner, which cannot resolve that package's
 extensionless ESM chain.
 
+## Anchor output and input positions
+
+`createAction` declares outputs and inputs; it does not fix their final
+positions. The anchor code assumed both: the fee reserve was read from output 0
+of the anchor transaction, and the anchor spend was signed at input 0 of the
+record transaction. Yours Wallet satisfies both assumptions, so they held until
+Metanet Desktop, which adds funding of its own.
+
+Signing a fixed index applies an application-derived key to whichever input the
+wallet happened to place there. The failure surfaces as a local `Spend`
+evaluation error, `The top stack element must be truthy after script
+evaluation`, at the `OP_CHECKSIG` of a P2PKH locking script the application does
+not control. A first Metanet mint attempt failed exactly that way against an
+anchor transaction that, being no-send, existed nowhere on chain to inspect.
+
+`src/actions/anchorOutput.ts` now locates the reserve by its exact locking
+script and satoshi value, and locates the spending input by the outpoint it
+consumes. A missing reserve, a duplicated byte-identical reserve, and a
+transaction that never spends the reserve are all refused with their own
+message rather than producing an opaque signature failure. Both the collection
+and the mint/decision paths use it.
+
 ## Reserved wallet funding
 
 A refused collection rehearsal used to strand real satoshis. Every Adinals
