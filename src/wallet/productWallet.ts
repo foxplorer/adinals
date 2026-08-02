@@ -29,6 +29,7 @@ import { saveCollectionRehearsal } from '../fixtures/rehearsalStore.ts'
 import { readCollectionNetworkPreflight } from '../readers/networkStatus.ts'
 import { parseGorillaPoolTransactionProof } from '../readers/rawTransactions.ts'
 import type { OwnedCustodyOutput } from '../readers/custodyRouting.ts'
+import type { OverlaySubmissionStatus } from '../overlay/submissionQueue.ts'
 import {
   productOwnershipEffect,
   rememberOwnedAd,
@@ -53,14 +54,20 @@ export type LabWriteResult = {
   broadcastStatus?: 'accepted' | 'uncertain'
   error?: string
   rawtx?: string
+  overlayStatus?: OverlaySubmissionStatus
 }
 
-const publicationResult = (action: AdinalsNoSendAction, outcome: 'accepted' | 'uncertain'): LabWriteResult => ({
+const publicationResult = (
+  action: AdinalsNoSendAction,
+  outcome: 'accepted' | 'uncertain',
+  overlayStatus?: OverlaySubmissionStatus,
+): LabWriteResult => ({
   txid: action.txid,
   outpoint: action.outpoint,
   ...(action.stateOutpoint && { stateOutpoint: action.stateOutpoint }),
   broadcastStatus: outcome,
   rawtx: action.rawtx,
+  ...(overlayStatus && { overlayStatus }),
 })
 
 async function publishLifecycle(keys: LabKeys, action: AdinalsNoSendAction): Promise<LabWriteResult> {
@@ -94,7 +101,7 @@ async function publishLifecycle(keys: LabKeys, action: AdinalsNoSendAction): Pro
     reviewActionResults: result.reviewActionResults,
   })
   if (result.outcome === 'rejected') return { error: result.message, rawtx: action.rawtx }
-  return publicationResult(action, result.outcome)
+  return publicationResult(action, result.outcome, result.overlaySubmission?.status)
 }
 
 async function rememberOwnedAction(keys: LabKeys, action: AdinalsNoSendAction): Promise<LabWriteResult> {
@@ -211,6 +218,7 @@ export async function createCollection(
       outpoint: rehearsal.outpoint,
       broadcastStatus: result.outcome,
       rawtx: rehearsal.rawtx,
+      ...(result.overlaySubmission && { overlayStatus: result.overlaySubmission.status }),
     }
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) }

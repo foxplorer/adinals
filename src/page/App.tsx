@@ -37,7 +37,11 @@ import {
   type LabKeys,
   type LabWriteResult,
 } from '../wallet/productWallet'
-import { ADINALS_NAMESPACE } from '../config/environment.ts'
+import { ADINALS_NAMESPACE, ADINALS_OVERLAY_URL } from '../config/environment.ts'
+import type {
+  OverlaySubmission,
+  OverlaySubmissionStatus,
+} from '../overlay/submissionQueue.ts'
 import { useWallet } from '../wallet/WalletContext.tsx'
 import { useOwnership } from './useOwnership.ts'
 import {
@@ -191,8 +195,11 @@ type RecentAdAction = {
   txid: string
   indexStatus: 'submitting' | 'indexed' | 'delayed'
   broadcastStatus: 'accepted' | 'uncertain'
+  overlayStatus?: OverlayReceiptStatus
   placement: 'creative' | 'sale'
 }
+
+type OverlayReceiptStatus = OverlaySubmissionStatus | 'not-queued'
 
 const isTransientUpdateProofError = (value: string): boolean =>
   /failed to fetch|network|timeout|timed out|temporarily unavailable|raw transaction .* unavailable|abort/i.test(value)
@@ -742,6 +749,7 @@ type Receipt = {
   outpoint: string
   indexStatus: 'submitting' | 'indexed' | 'delayed'
   broadcastStatus: 'accepted' | 'uncertain'
+  overlayStatus?: OverlayReceiptStatus
   hasMedia: boolean
 }
 
@@ -769,6 +777,7 @@ function RecentAdActionLine({ action }: { action: RecentAdAction }) {
             ? 'Broadcast · indexed'
             : 'Broadcast · index submission delayed'}
       </small>
+      {action.overlayStatus && <small>Local overlay · {action.overlayStatus}</small>}
     </span>
   )
 }
@@ -794,6 +803,13 @@ function ReceiptLine({ receipt, onDismiss }: { receipt: Receipt; onDismiss: () =
                 : 'The dashboard updated locally and GorillaPool now returns the exact record.'
               : 'The dashboard updated from the txid. GorillaPool does not return the exact record yet.'}
         </span>
+        {receipt.overlayStatus && (
+          <span>
+            Local overlay: {receipt.overlayStatus === 'not-queued'
+              ? 'not queued—refresh this local app before another canary.'
+              : receipt.overlayStatus}
+          </span>
+        )}
         <span className="ads-mono adlab-txid">{receipt.txid}</span>
       </div>
       <div className="adlab-transaction-links">
@@ -1299,6 +1315,28 @@ export function AdLab() {
     if (!keys) setActiveTab('collections')
   }, [keys])
   useEffect(() => {
+    const onOverlayStatus = (event: Event) => {
+      const record = (event as CustomEvent<OverlaySubmission>).detail
+      if (!record || typeof record.txid !== 'string') return
+      setReceipt((current) =>
+        current?.txid === record.txid
+          ? { ...current, overlayStatus: record.status }
+          : current
+      )
+      setRecentAdActions((current) => {
+        let changed = false
+        const next = Object.fromEntries(Object.entries(current).map(([origin, action]) => {
+          if (action.txid !== record.txid) return [origin, action]
+          changed = true
+          return [origin, { ...action, overlayStatus: record.status }]
+        }))
+        return changed ? next : current
+      })
+    }
+    window.addEventListener('adinals-overlay-status', onOverlayStatus)
+    return () => window.removeEventListener('adinals-overlay-status', onOverlayStatus)
+  }, [])
+  useEffect(() => {
     const timer = window.setInterval(() => {
       setCollections((current) =>
         current.map((item) => ({ ...item, expired: hasExpired(item.expiresAt) }))
@@ -1348,12 +1386,14 @@ export function AdLab() {
       }
 
       setNote(null)
+      const overlayStatus = result.overlayStatus ?? (ADINALS_OVERLAY_URL ? 'not-queued' : undefined)
       setReceipt({
         label: adAction?.successLabel ?? label,
         txid: result.txid,
         outpoint: result.outpoint ?? `${result.txid}_0`,
         indexStatus: 'submitting',
         broadcastStatus: result.broadcastStatus ?? 'accepted',
+        ...(overlayStatus && { overlayStatus }),
         hasMedia,
       })
       if (adAction) {
@@ -1364,6 +1404,7 @@ export function AdLab() {
             txid: result.txid as string,
             indexStatus: 'submitting',
             broadcastStatus: result.broadcastStatus ?? 'accepted',
+            ...(overlayStatus && { overlayStatus }),
             placement: adAction.placement,
           },
         }))

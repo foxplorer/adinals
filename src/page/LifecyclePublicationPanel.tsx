@@ -127,6 +127,7 @@ export function LifecyclePublicationPanel({
         ...started, updatedAt: new Date().toISOString(), outcome: result.outcome,
         message: result.message, sendWithResults: result.sendWithResults,
         reviewActionResults: result.reviewActionResults,
+        ...(result.overlaySubmission && { overlayStatus: result.overlaySubmission.status }),
       }
       await saveLifecyclePublicationAttempt(completed)
       replaceAttempt(completed)
@@ -181,6 +182,7 @@ export function LifecyclePublicationPanel({
           <strong>Publication state: {selection.attempt.outcome}</strong>
           <p>{selection.attempt.message}</p>
           <p>Indexer: {selection.attempt.indexerOutcome}</p>
+          {selection.attempt.overlayStatus && <p>Local overlay: {selection.attempt.overlayStatus}</p>}
           <button type="button" className="ads-back" disabled={Boolean(working)} onClick={() => void reconcile()}>
             {working === 'reconcile' ? 'Reconciling exact txids…' : 'Reconcile wallet + public network'}
           </button>

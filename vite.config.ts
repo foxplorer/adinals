@@ -15,4 +15,13 @@ export default defineConfig({
   build: {
     sourcemap: false,
   },
+  server: {
+    proxy: {
+      '/adinals-overlay': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/adinals-overlay/, ''),
+      },
+    },
+  },
 })

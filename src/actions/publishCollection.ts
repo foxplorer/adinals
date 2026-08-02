@@ -7,6 +7,11 @@ import type {
 import { ADINALS_NAMESPACE } from '../config/environment.ts'
 import type { RecoveredCollectionCandidate } from './recovery.ts'
 import type { CollectionNetworkPreflight } from '../readers/networkStatus.ts'
+import {
+  enqueueOverlaySubmission,
+  type OverlayDeliveryOptions,
+  type OverlaySubmission,
+} from '../overlay/submissionQueue.ts'
 
 export type PublicationWallet = Pick<WalletInterface, 'createAction'>
 
@@ -15,6 +20,7 @@ export type CollectionPublicationResult = {
   message: string
   sendWithResults: SendWithResult[]
   reviewActionResults: ReviewActionResult[]
+  overlaySubmission: OverlaySubmission | null
 }
 
 const PREFLIGHT_MAX_AGE_MS = 2 * 60 * 1000
@@ -70,6 +76,7 @@ export function classifyPublicationResponse(
       message: 'The wallet did not return statuses for the exact publication batch. Reconcile these txids before any retry.',
       sendWithResults,
       reviewActionResults: [],
+      overlaySubmission: null,
     }
   }
   if (sendWithResults.some((result) => result.status === 'failed')) {
@@ -78,6 +85,7 @@ export function classifyPublicationResponse(
       message: 'The wallet reported a failed transaction in the publication batch. Do not retry until reconciled.',
       sendWithResults,
       reviewActionResults: [],
+      overlaySubmission: null,
     }
   }
   if (sendWithResults.some((result) => result.status === 'sending')) {
@@ -86,6 +94,7 @@ export function classifyPublicationResponse(
       message: 'The wallet is still sending the publication batch. Do not submit another batch.',
       sendWithResults,
       reviewActionResults: [],
+      overlaySubmission: null,
     }
   }
   return {
@@ -93,6 +102,7 @@ export function classifyPublicationResponse(
     message: 'The wallet accepted the exact transaction batch into its broadcast lifecycle.',
     sendWithResults,
     reviewActionResults: [],
+    overlaySubmission: null,
   }
 }
 
@@ -104,6 +114,7 @@ export function classifyPublicationError(error: unknown): CollectionPublicationR
       message: 'The wallet reported an invalid or double-spent transaction. Do not retry this chain.',
       sendWithResults,
       reviewActionResults,
+      overlaySubmission: null,
     }
   }
   if (reviewActionResults.length > 0 && reviewActionResults.every((result) => result.status === 'success')) {
@@ -112,6 +123,7 @@ export function classifyPublicationError(error: unknown): CollectionPublicationR
       message: 'The wallet review results report successful network acceptance.',
       sendWithResults,
       reviewActionResults,
+      overlaySubmission: null,
     }
   }
   const message = error instanceof Error ? error.message : String(error)
@@ -120,13 +132,26 @@ export function classifyPublicationError(error: unknown): CollectionPublicationR
     message: `${message} The exact txids must be reconciled before any retry.`,
     sendWithResults,
     reviewActionResults,
+    overlaySubmission: null,
   }
+}
+
+export async function queueCollectionForOverlay(
+  candidate: RecoveredCollectionCandidate,
+  options: OverlayDeliveryOptions = {},
+): Promise<OverlaySubmission | null> {
+  return enqueueOverlaySubmission({
+    txid: candidate.txid,
+    outpoints: [candidate.outpoint],
+    atomicBeef: candidate.atomicBeef,
+  }, options).catch(() => null)
 }
 
 export async function publishRecoveredCollection(
   wallet: PublicationWallet,
   candidate: RecoveredCollectionCandidate,
   preflight: CollectionNetworkPreflight,
+  overlayOptions: OverlayDeliveryOptions = {},
 ): Promise<CollectionPublicationResult> {
   validatePublicationReadiness(candidate, preflight)
   const txids = [candidate.anchorTxid, candidate.txid]
@@ -140,8 +165,14 @@ export async function publishRecoveredCollection(
         sendWith: txids,
       },
     })
-    return classifyPublicationResponse(txids, response)
+    const result = classifyPublicationResponse(txids, response)
+    return result.outcome === 'accepted'
+      ? { ...result, overlaySubmission: await queueCollectionForOverlay(candidate, overlayOptions) }
+      : result
   } catch (error) {
-    return classifyPublicationError(error)
+    const result = classifyPublicationError(error)
+    return result.outcome === 'accepted'
+      ? { ...result, overlaySubmission: await queueCollectionForOverlay(candidate, overlayOptions) }
+      : result
   }
 }

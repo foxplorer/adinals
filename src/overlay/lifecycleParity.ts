@@ -13,14 +13,25 @@ export type LifecycleProjection = {
     slot: number
     currentOutpoint: string
     owner: string
+    ownerEpoch: string
     ownershipOutpoints: string[]
+    listing: { price: number; seller: string } | null
     proposalStatus: 'live' | 'pending' | 'rejected'
     creative: {
-      kind: 'text'
+      kind: 'text' | 'image'
       text: string
+      contentHash: string
       sourceOutpoint: string
     }
   }>
+}
+
+export type PublicLifecycleProjection = {
+  collection: LifecycleProjection['collection']
+  ads: Array<Pick<
+    LifecycleProjection['ads'][number],
+    'origin' | 'slot' | 'currentOutpoint' | 'owner' | 'proposalStatus' | 'creative'
+  >>
 }
 
 export type ProductionLifecycleFixture = {
@@ -213,11 +224,14 @@ export function expectedLifecycleProjection(
       slot: ad.slot,
       currentOutpoint: ad.expected.currentOutpoint,
       owner: ad.expected.owner,
+      ownerEpoch: ad.update.ownerEpoch,
       ownershipOutpoints: [...ad.ownershipOutpoints],
+      listing: null,
       proposalStatus: ad.expected.proposalStatus,
       creative: {
         kind: 'text',
         text: ad.expected.creativeText,
+        contentHash: '',
         sourceOutpoint: ad.expected.creativeSourceOutpoint,
       },
     })),
@@ -242,13 +256,68 @@ export function compareLifecycleProjection(
       errors.push(`${expectedAd.origin}: missing ad`)
       continue
     }
-    for (const key of ['slot', 'currentOutpoint', 'owner', 'proposalStatus'] as const) {
+    for (const key of ['slot', 'currentOutpoint', 'owner', 'ownerEpoch', 'proposalStatus'] as const) {
       if (expectedAd[key] !== actualAd[key]) errors.push(`${expectedAd.origin}.${key} differs`)
+    }
+    if (JSON.stringify(expectedAd.listing) !== JSON.stringify(actualAd.listing)) {
+      errors.push(`${expectedAd.origin}.listing differs`)
     }
     if (JSON.stringify(expectedAd.ownershipOutpoints) !== JSON.stringify(actualAd.ownershipOutpoints)) {
       errors.push(`${expectedAd.origin}.ownershipOutpoints differs`)
     }
-    if (JSON.stringify(expectedAd.creative) !== JSON.stringify(actualAd.creative)) {
+    const creativeDiffers = expectedAd.creative.kind !== actualAd.creative.kind ||
+      expectedAd.creative.text !== actualAd.creative.text ||
+      expectedAd.creative.sourceOutpoint !== actualAd.creative.sourceOutpoint ||
+      (Boolean(expectedAd.creative.contentHash) &&
+        expectedAd.creative.contentHash !== actualAd.creative.contentHash)
+    if (creativeDiffers) {
+      errors.push(`${expectedAd.origin}.creative differs`)
+    }
+  }
+  return errors
+}
+
+export function publicLifecycleProjection(
+  projection: LifecycleProjection,
+): PublicLifecycleProjection {
+  return {
+    collection: { ...projection.collection },
+    ads: (projection.collection.displayEligible ? projection.ads : []).map((ad) => ({
+      origin: ad.origin,
+      slot: ad.slot,
+      currentOutpoint: ad.currentOutpoint,
+      owner: ad.owner,
+      proposalStatus: ad.proposalStatus,
+      creative: { ...ad.creative },
+    })),
+  }
+}
+
+export function comparePublicLifecycleProjection(
+  expected: PublicLifecycleProjection,
+  actual: PublicLifecycleProjection,
+): string[] {
+  const errors: string[] = []
+  for (const key of ['origin', 'creator', 'capacity', 'approval', 'format', 'expiresAt', 'displayEligible'] as const) {
+    if (expected.collection[key] !== actual.collection[key]) errors.push(`collection.${key} differs`)
+  }
+  const actualAds = new Map(actual.ads.map((ad) => [ad.origin, ad]))
+  if (actual.ads.length !== expected.ads.length) errors.push('ad count differs')
+  for (const expectedAd of expected.ads) {
+    const actualAd = actualAds.get(expectedAd.origin)
+    if (!actualAd) {
+      errors.push(`${expectedAd.origin}: missing ad`)
+      continue
+    }
+    for (const key of ['slot', 'currentOutpoint', 'owner', 'proposalStatus'] as const) {
+      if (expectedAd[key] !== actualAd[key]) errors.push(`${expectedAd.origin}.${key} differs`)
+    }
+    const creativeDiffers = expectedAd.creative.kind !== actualAd.creative.kind ||
+      expectedAd.creative.text !== actualAd.creative.text ||
+      expectedAd.creative.sourceOutpoint !== actualAd.creative.sourceOutpoint ||
+      (Boolean(expectedAd.creative.contentHash) &&
+        expectedAd.creative.contentHash !== actualAd.creative.contentHash)
+    if (creativeDiffers) {
       errors.push(`${expectedAd.origin}.creative differs`)
     }
   }

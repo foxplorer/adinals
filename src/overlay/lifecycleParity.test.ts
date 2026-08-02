@@ -3,7 +3,9 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import {
   compareLifecycleProjection,
+  comparePublicLifecycleProjection,
   expectedLifecycleProjection,
+  publicLifecycleProjection,
   validateProductionLifecycleFixture,
   type ProductionLifecycleFixture,
 } from './lifecycleParity.ts'
@@ -52,4 +54,35 @@ test('reports overlay projection drift by immutable ad origin', async () => {
     `${expected.ads[0]!.origin}.owner differs`,
     `${expected.ads[1]!.origin}.creative differs`,
   ])
+})
+
+test('public-reader parity compares full membership and current semantic state', async () => {
+  const fixture = await readFixture()
+  const deep = expectedLifecycleProjection(fixture, new Date('2026-08-02T00:00:00.000Z'))
+  const expected = publicLifecycleProjection(deep)
+  assert.deepEqual(comparePublicLifecycleProjection(expected, structuredClone(expected)), [])
+  const drifted = structuredClone(expected)
+  drifted.ads[0]!.currentOutpoint = `${'0'.repeat(64)}_0`
+  drifted.collection.displayEligible = false
+  assert.deepEqual(comparePublicLifecycleProjection(expected, drifted), [
+    'collection.displayEligible differs',
+    `${expected.ads[0]!.origin}.currentOutpoint differs`,
+  ])
+})
+
+test('public live projection suppresses expired ads and treats image bytes as a deep proof field', async () => {
+  const fixture = await readFixture()
+  const expired = expectedLifecycleProjection(fixture, new Date('2026-08-09T00:00:00.000Z'))
+  assert.deepEqual(publicLifecycleProjection(expired).ads, [])
+
+  const image = publicLifecycleProjection(expectedLifecycleProjection(
+    fixture,
+    new Date('2026-08-02T00:00:00.000Z'),
+  ))
+  image.ads[0]!.creative.kind = 'image'
+  image.ads[0]!.creative.text = ''
+  image.ads[0]!.creative.contentHash = ''
+  const overlay = structuredClone(image)
+  overlay.ads[0]!.creative.contentHash = 'verified-byte-hash'
+  assert.deepEqual(comparePublicLifecycleProjection(image, overlay), [])
 })

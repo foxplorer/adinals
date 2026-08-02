@@ -1,5 +1,6 @@
 import type { ReviewActionResult, SendWithResult } from '@bsv/sdk'
 import { COLLECTION_PUBLICATIONS_STORE, openAdinalsDatabase } from './database.ts'
+import type { OverlaySubmissionStatus } from '../overlay/submissionQueue.ts'
 
 export type PublicationOutcome = 'submitting' | 'accepted' | 'uncertain' | 'rejected'
 export type IndexerOutcome = 'not-submitted' | 'submitted' | 'indexed' | 'not-indexed'
@@ -17,6 +18,7 @@ export type CollectionPublicationAttempt = {
   sendWithResults: SendWithResult[]
   reviewActionResults: ReviewActionResult[]
   indexerOutcome: IndexerOutcome
+  overlayStatus?: OverlaySubmissionStatus
 }
 
 export async function saveCollectionPublicationAttempt(

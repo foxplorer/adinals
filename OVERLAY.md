@@ -24,7 +24,7 @@ incomplete.
 
 ## Current implementation status
 
-As of 2026-08-01, `@bsv/lars` 1.5.8 is installed in the root development
+As of 2026-08-02, `@bsv/lars` 1.5.8 is installed in the root development
 dependencies. The repository contains `deployment-info.json` plus an isolated
 `backend/` package registering `tm_adinals` and `ls_adinals`. The first local
 configuration runs the backend only on BSV mainnet; there is deliberately no
@@ -70,11 +70,146 @@ an empty `LookupFormula` because Overlay lookup services always return arrays
 of verifiable output references; service phase/version is metadata, not
 free-form lookup JSON.
 
+The browser write path is now connected in code. `src/overlay/client.ts`
+provides one typed client for binary `/submit` and versioned `/lookup` calls.
+Every collection and lifecycle publication that the wallet classifies as
+accepted queues the same locally verified Atomic BEEF for `tm_adinals`; updates
+poll both the state output at index 0 and sibling update record at index 1.
+Spend-linked action BEEF is built with its immediate predecessor as the wallet
+`inputBEEF`, so the overlay receives the evidence required by the Topic
+Manager rather than a raw current transaction alone.
+
+Overlay delivery is deliberately downstream of wallet success. IndexedDB
+version 5 adds an `overlay-submissions` queue keyed by exact outpoint, records
+`provisional`, `indexed`, `retrying`, and `failed` states, accepts empty
+admission instructions on an idempotent duplicate, and verifies hydrated
+lookup BEEF against the expected txid and output index. A STEAK response is
+only a processing acknowledgment: the client polls every required exact output
+for up to ten seconds. Network outages and delayed storage are retained for an
+exponential, capped retry; application startup replays due entries. Overlay
+unavailability never changes an already accepted wallet publication into a
+failed action.
+
+Local Vite development defaults to `http://localhost:8080`. Production builds
+do not contact a visitor's localhost and only enable the overlay when
+`VITE_ADINALS_OVERLAY_URL` explicitly names the future HTTPS shadow endpoint.
+The developer publication panels expose the initial local overlay state, and
+all queue transitions are persisted and emitted as `adinals-overlay-status`
+browser events. The first live attempt missed LARS, but the repaired Ad #5
+retry subsequently passed end to end as recorded below.
+
+Local browser delivery now uses the same-origin `/adinals-overlay` Vite proxy,
+which forwards to LARS on port 8080 and removes cross-origin/private-network
+browser policy from this boundary. Queue creation also awaits the first full
+submit and exact-output polling cycle, returning its actual status to the
+receipt without changing the accepted wallet result. The proxy passes a live
+exact lookup and the Ad #5 browser submit canary.
+
+The subsequent hard refresh reached the updated client but still emitted no
+`/submit` for Ad #4. Its original browser session therefore has no recoverable
+queue/BEEF row for this mint. The proxy transport is independently live, but
+the existing transaction cannot be used as its browser-submit proof unless its
+Atomic BEEF is recovered; confirmed backfill remains its safe recovery path.
+
+The next live mint, Ad #5
+`b660c95f9e38ee369769bf7c9b89efb4f45899f048a3c9133175c26dc23ba91c_0`,
+proved the durable queue and exposed the exact transport defect: Brave stored
+`Failed to execute 'fetch' on 'Window': Illegal invocation`. The overlay client
+had retained native `fetch` as an object method, changing its required browser
+receiver when invoked. It now calls `globalThis.fetch` through a wrapper. A
+browser-receiver regression test and the production build pass; the retained
+Ad #5 queue can retry without another wallet transaction.
+
+That retained retry then passed end to end without another transaction. Brave
+POSTed the 2,329-byte Atomic BEEF through the same-origin Vite proxy, LARS
+returned HTTP 200 in 573 ms, the browser issued the exact-output lookup, and
+`b660c95f9e38ee369769bf7c9b89efb4f45899f048a3c9133175c26dc23ba91c_0`
+is visible with hydrated BEEF while unconfirmed. The live immediate browser
+submission canary is therefore **pass**.
+
+After Ad #4 confirmed, the same scoped backfill admitted exactly one new
+transaction, reported 16 already present and zero failures, and exact lookup
+returned output 0 with hydrated BEEF. This closes recovery for the missed mint
+and proves eventual confirmed ingestion; it does not retroactively pass the
+unconfirmed browser-submit canary.
+
+`src/readers/overlayReader.ts` is the first frontend proof adapter. It hydrates
+every lookup formula, rechecks transaction IDs and output indexes, verifies MAP
+and SIGMA records, recognizes custody locks, follows input-0 ownership links,
+derives current owner and owner epoch, carries listing terms, resolves proposal
+status and creative source, and applies collection expiration. It does not
+replace the existing reader: `src/readers/derivedApiReader.ts` normalizes the
+current public JSON response for shadow comparison, and every disagreement or
+overlay outage leaves the current reference path authoritative.
+
+`npm run overlay:parity` bundles the browser verifier before running it so the
+known extensionless Node ESM import in `@1sat/templates` does not leak into the
+Node 22 command boundary. On 2026-08-02 two consecutive namespace-wide live
+passes matched the current reader across five collections and 18 canonical ads:
+live collection membership, slots, current outpoints, owners, proposal states,
+creative text or image bytes/source, collection rules, expiration, and display
+eligibility all agree. The two retained complete chains additionally match
+every ownership outpoint, owner epoch, final listing state, and reviewed
+creative. The comparison preserves expired membership in the deep overlay
+projection while matching the public `/live` route's intentional empty display
+set for an expired collection.
+
+That namespace run found one frontend decoder drift before passing: a valid
+pinned OrdLock listing was accepted by the backend but the browser template
+decoder returned null. `src/protocol/scriptTemplates.ts` now performs the same
+byte-length, suffix-hash, seller, price, and payout-script checks at the browser
+boundary, with regression tests. No broader script shape was admitted.
+
+Confirmed external-spend reconciliation is now a separate cron-friendly
+command, `npm run overlay:reconcile`. It enumerates current states from the
+overlay, asks GorillaPool only for spend discovery, requires txid-checked
+confirmed proofs for both the predecessor and spender, combines them into valid
+BEEF, submits through the normal fail-closed Topic Manager, and polls exact
+successor output 0. Unconfirmed spends remain untouched. Its automated suite
+covers successful ingestion, exact-output delay, idempotency, and partial
+reader outage. The first full live pass checked all 18 current states with zero
+failures and found zero missing confirmed spends to submit.
+
+The first real browser canary on 2026-08-02 minted production Ad #4 at
+`4eeb833ffd469fb9952385d7659f9c1a63fc36658c9d2c3d7ab2298ebab4c7e0_0`
+in collection
+`b70c33ad75c6588826bfdb0cee0f9ed5aedc39b7856232f2b13a69f57e8f6ed2_0`.
+The wallet reported an accepted broadcast and GorillaPool plus the public
+reader returned the exact live record. A namespace dry run consequently found
+19 mints instead of 18. LARS exact-output lookup remained empty, however, and
+its request log contained no `/submit` for this transaction. This is a failed
+overlay-delivery canary, not an admission rejection. The confirmed-spend
+reconciler correctly did not manufacture recovery for an unconfirmed mint and,
+because it begins from overlay-known current states, is not mint discovery.
+
+The main product receipt now reports the independent local-overlay status in
+addition to GorillaPool status and listens for persisted queue transitions. If
+an enabled local build returns without a queue record it shows `not-queued`;
+otherwise it advances through `provisional`, `indexed`, `retrying`, or `failed`.
+This removes the UI ambiguity exposed by the first attempt. The production
+build and all 32 application test files pass after that observability change.
+The first hard refresh confirmed that no queue entry had been retained. Startup
+recovery now also joins wallet-accepted collection/lifecycle publication rows
+to their retained rehearsals and recreates any missing queue entry from the
+original Atomic BEEF. Existing queue keys are left untouched, so this repair is
+idempotent and does not weaken admission. A second hard refresh still produced
+no `/submit`, so the live browser recovery join is not yet proven and the
+immediate-delivery defect remains open.
+
+An idempotent backfill scoped to this collection then found one collection,
+four mints, nine lifecycle transitions, three updates, and three decisions. It
+reported 16 already-present confirmed transactions with zero failures. Ad #4
+was still unconfirmed and was therefore correctly skipped by the confirmed-only
+backfill. This proves the existing collection history remains consistent, not
+that the new mint has reached LARS; after confirmation, the same backfill is the
+independent eventual-recovery path.
+
 LARS reserves ports 8080 (overlay), 8081 (optional Adminer), and 8082 (optional
-Mongo Express). An older Space Payments overlay occupied 8080 and was stopped.
-SkateSV still occupies the two optional UI ports, so Adinals was started with
-only `overlay-dev-container` plus its MySQL and Mongo dependencies. Those UI
-port conflicts do not affect `/submit` or `/lookup`.
+Mongo Express). On 2026-08-02 SkateSV occupied 8080 and old Space
+Payments/template UI containers occupied 8081 and 8082. Those three old-project
+containers were stopped without deleting their data. Adinals now runs only
+`overlay-dev-container` plus its MySQL and Mongo dependencies; the optional UI
+ports remain free.
 
 The live HTTP smoke test proves rejection, record admission, lifecycle
 admission, exact output retention, and idempotency:
@@ -85,6 +220,15 @@ admission, exact output retention, and idempotency:
   `b70c33ad75c6588826bfdb0cee0f9ed5aedc39b7856232f2b13a69f57e8f6ed2_0`
   returns `outputsToAdmit: [0]` and is returned by collection and exact-output
   lookup as hydrated, txid-checked BEEF.
+
+The 2026-08-02 restart returned `status: ok`, registered `tm_adinals` and
+`ls_adinals`, and passed the populated smoke replay with zero new and eleven
+already-present transactions. Both semantic histories, both current creative
+proofs, the 19-output `collectionLive` formula, and empty resolved pending
+decision set were reverified. The new reusable browser client was also run
+directly against localhost: it resubmitted the already-public indexed
+collection as an idempotent duplicate (`outputsToAdmit: []`) and independently
+confirmed its hydrated exact output as visible.
 
 Both retained production ads now replay from mint through listing, purchase,
 update, and creator decision. On a clean database each mint, listing, purchase,
@@ -168,6 +312,8 @@ npm run overlay:start
 npm run overlay:backfill -- --dry-run
 npm run overlay:backfill
 npm run overlay:smoke
+npm run overlay:parity
+npm run overlay:reconcile
 ```
 
 LARS 1.5.8 starts on localhost by default; use its explicit `--with-ngrok` flag
@@ -438,12 +584,13 @@ production chains. Semantic `history`, `adCurrent`, `collectionLive`, and
 pending-decision resolution also pass their production and synthetic gates.
 Next:
 
-1. connect successful wallet actions to immediate overlay submission, retaining
-   GorillaPool reconciliation for transactions made elsewhere; and
-2. run automated dual-read parity against the existing browser reader before
-   CARS, including namespace-wide current-owner and live-creative comparisons;
-   and
-3. deploy one CARS node in shadow mode after parity passes, while
+1. reload the local Vite client, observe whether the retained mint queue replays,
+   and, only if necessary, run one accepted wallet action while verifying the
+   separate receipt advances from provisional to exact-output indexed without
+   affecting the existing GorillaPool receipt;
+2. schedule repeated namespace parity and confirmed reconciliation during the
+   local shadow period and retain divergence reports; and
+3. deploy one CARS node in shadow mode after those repeated passes, while
    keeping derived embed JSON in the separate reader layer.
 
 The topic manager stays fail closed for every transition that has not reached
@@ -462,7 +609,7 @@ Read OVERLAY.md, README.md, and BRC100_COLLECTION_MATRIX.md completely first,
 then inspect git status. Preserve existing work and keep all three documents
 current. Do not commit, push, or deploy unless explicitly requested.
 
-Verified state as of 2026-08-01:
+Verified state as of 2026-08-02:
 
 - Local LARS uses http://localhost:8080 with tm_adinals and ls_adinals.
 - The confirmed production v3 discovery set contains 5 collections, 18 mint
@@ -472,38 +619,73 @@ Verified state as of 2026-08-01:
 - An idempotent replay reported 0 new, 69 already present, and 0 failures.
 - The populated semantic smoke test passes, including both retained complete
   sale/update/approval histories and a 19-output collectionLive proof set.
-- All 27 application test files, all 6 backend test files, TypeScript, and the
+- All 32 application test files, all 6 backend test files, TypeScript, and the
   production Vite build pass.
 - Large-inscription parsing and distinct mint creator/spend-lock owner handling
   are covered by regression tests.
+- `src/overlay/client.ts` implements reusable binary submit and hydrated,
+  txid-checked lookup calls.
+- Accepted collection, mint, update, decision, listing, purchase, and cancel
+  broadcasts enqueue their locally verified Atomic BEEF. Updates require exact
+  visibility of outputs 0 and 1.
+- IndexedDB version 5 persists provisional/indexed/retrying/failed overlay
+  delivery state; delayed lookup, duplicates, outage-after-broadcast,
+  permanent rejection, and startup retry are automated passes.
+- Local Vite defaults to localhost:8080, while production overlay delivery is
+  disabled unless `VITE_ADINALS_OVERLAY_URL` is explicitly configured.
+- Local browser requests now use the same-origin `/adinals-overlay` Vite proxy
+  to port 8080, and publication awaits its initial delivery result. Focused
+  publication/queue tests and the production build pass.
+- Local LARS is running with only its required three containers. Health,
+  registration, populated smoke replay, and a direct reusable-client duplicate
+  submit/exact lookup pass.
+- The first real browser attempt minted production Ad #4 at
+  `4eeb833ffd469fb9952385d7659f9c1a63fc36658c9d2c3d7ab2298ebab4c7e0_0`.
+  Wallet broadcast and GorillaPool/public-reader visibility passed, but LARS
+  exact lookup stayed empty and its logs showed no `/submit`. Ad #4 was later
+  recovered by confirmed backfill; the subsequent Ad #5 retry passed the live
+  wallet-to-overlay canary.
+- Ad #5 at `b660c95f9e38ee369769bf7c9b89efb4f45899f048a3c9133175c26dc23ba91c_0`
+  passed the repaired unconfirmed browser path: Brave sent its 2,329-byte BEEF
+  through the Vite proxy, LARS returned 200 in 573 ms, and exact hydrated output
+  0 became visible without waiting for confirmation.
+- The main product receipt now displays independent local-overlay transitions
+  and explicitly reports `not-queued` when the enabled client returns no queue
+  record. Startup also reconstructs missing queue entries from accepted
+  publication records plus retained Atomic BEEF, but a second hard refresh did
+  not recover this live mint, so that browser join remains under diagnosis. All
+  32 application test files and the production build pass afterward.
+- A scoped confirmed-only backfill found 1 collection, 4 public mints, 9
+  lifecycle transitions, 3 updates, and 3 decisions; 16 confirmed transactions
+  were already present with 0 failures. The still-unconfirmed Ad #4 was skipped.
+- After confirmation, rerunning that scope admitted Ad #4 as the only new
+  transaction; exact output 0 is now visible with hydrated BEEF and 0 failures.
+- `src/readers/overlayReader.ts` derives verified collection membership,
+  ownership history, current owner, owner epoch, listing, proposal state,
+  creative, expiration, and display eligibility from overlay BEEF formulas.
+- Two consecutive `npm run overlay:parity` runs pass against the current public
+  reader for all 5 collections and 18 canonical ads, including image byte
+  hashes. The two complete lifecycle vectors also pass deep history parity.
+- `npm run overlay:reconcile` is implemented and automated. Its confirmed-only
+  live namespace scan checked all 18 current states with 0 submissions needed
+  and 0 failures.
 
 Implement the next phase:
 
-1. Add one reusable overlay client for /submit and /lookup.
-2. After every successful wallet broadcast, submit the same locally verified
-   BEEF to tm_adinals. Include the exact immediate predecessor transaction in
-   lifecycle packages.
-3. Treat the STEAK response as processing acknowledgment, then poll exact
-   output lookup and expose provisional, indexed, retrying, and failed states.
-4. Never turn an already-broadcast wallet action into a failed action because
-   overlay submission is unavailable. Queue an idempotent retry and reconcile
-   it later.
-5. Add a frontend overlay reader adapter and dual-read it against the current
-   GorillaPool/reference reader. Compare collection membership, ownership
-   history, current owner, owner epoch, listing, pending decision, creative,
-   expiration, and display eligibility.
-6. Add confirmed server-side reconciliation for transactions created outside
-   Adinals or missed when a browser closes.
-7. Keep GorillaPool as fallback and do not switch production reads until parity
+1. Reload the local client, check whether the retained mint queue replays, and
+   rerun the live wallet-to-overlay canary only if needed; require the separate
+   overlay receipt and exact-output lookup to reach indexed.
+2. Schedule repeated namespace parity and confirmed reconciliation during
+   local shadow operation; preserve exact divergence reports.
+3. Keep GorillaPool as fallback and do not switch production reads until parity
    has no unexplained divergence.
-8. Test successful submission, delayed lookup storage, duplicate submission,
-   overlay outage after broadcast, external-spend reconciliation, and parity
-   disagreement.
-9. Update OVERLAY.md, README.md, and BRC100_COLLECTION_MATRIX.md with exact
+4. Prepare one CARS shadow deployment only after the live wallet canary and
+   repeated local runs remain clean.
+5. Update OVERLAY.md, README.md, and BRC100_COLLECTION_MATRIX.md with exact
    results.
 
-If LARS is stopped, start only the required services so ports 8081 and 8082
-remain available to the existing local projects:
+If LARS is stopped, start only the required services; the old SkateSV, Space
+Payments, and template UI containers were stopped without deleting their data:
 
 docker compose -p lars_adinals -f local-data/docker-compose.yml up -d mysql mongo overlay-dev-container
 

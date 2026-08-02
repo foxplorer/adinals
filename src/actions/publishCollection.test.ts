@@ -3,8 +3,10 @@ import test from 'node:test'
 import {
   classifyPublicationError,
   classifyPublicationResponse,
+  publishRecoveredCollection,
   validatePublicationReadiness,
 } from './publishCollection.ts'
+import type { OverlaySubmission } from '../overlay/submissionQueue.ts'
 
 const ANCHOR = 'a'.repeat(64)
 const COLLECTION = 'b'.repeat(64)
@@ -67,4 +69,38 @@ test('review errors distinguish rejection, acceptance, and ambiguity', () => {
     ],
   }).outcome, 'accepted')
   assert.equal(classifyPublicationError(new Error('timeout')).outcome, 'uncertain')
+})
+
+test('overlay outage cannot turn an accepted wallet broadcast into publication failure', async () => {
+  const writes: OverlaySubmission[] = []
+  const result = await publishRecoveredCollection(
+    {
+      createAction: async () => ({
+        txid: COLLECTION,
+        sendWithResults: [
+          { txid: ANCHOR, status: 'unproven' },
+          { txid: COLLECTION, status: 'unproven' },
+        ],
+      }),
+    },
+    {
+      ...candidate,
+      outpoint: `${COLLECTION}_0`,
+      atomicBeef: [1, 2, 3],
+    } as Parameters<typeof publishRecoveredCollection>[1],
+    { ...preflight, checkedAt: new Date().toISOString() },
+    {
+      store: {
+        async put(record) { writes.push(structuredClone(record)) },
+        async listPending() { return [] },
+      },
+      client: {
+        async submit() { throw new Error('overlay offline') },
+        async hasOutput() { return false },
+      },
+    },
+  )
+  assert.equal(result.outcome, 'accepted')
+  assert.equal(result.overlaySubmission?.status, 'retrying')
+  assert.equal(writes.at(-1)?.status, 'retrying')
 })

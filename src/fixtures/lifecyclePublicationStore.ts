@@ -1,6 +1,7 @@
 import type { ReviewActionResult, SendWithResult } from '@bsv/sdk'
 import type { IndexerOutcome, PublicationOutcome } from './publicationStore.ts'
 import { LIFECYCLE_PUBLICATIONS_STORE, openAdinalsDatabase } from './database.ts'
+import type { OverlaySubmissionStatus } from '../overlay/submissionQueue.ts'
 
 export type LifecyclePublicationAttempt = {
   format: 'adinals-brc100-lifecycle-publication-v1'
@@ -17,6 +18,7 @@ export type LifecyclePublicationAttempt = {
   sendWithResults: SendWithResult[]
   reviewActionResults: ReviewActionResult[]
   indexerOutcome: IndexerOutcome
+  overlayStatus?: OverlaySubmissionStatus
 }
 
 export async function saveLifecyclePublicationAttempt(attempt: LifecyclePublicationAttempt): Promise<void> {

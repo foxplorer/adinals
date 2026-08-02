@@ -77,7 +77,7 @@ npm run build
 npm run preview
 ```
 
-The repository currently passes 27 browser/application Node test files, the
+The repository currently passes 32 browser/application Node test files, the
 independent collection script/fixture verifier, the backend overlay suite,
 TypeScript compilation, and the production Vite build.
 
@@ -92,6 +92,7 @@ Production is the default. These variables are explicit operator controls:
 | `VITE_ENABLE_LIFECYCLE_PUBLISH=false` | Emergency read-only switch for mint/update/market actions. |
 | `VITE_ADINALS_API_BASE` | Override the derived JSON reader base URL. |
 | `VITE_ADINALS_EMBED_SCRIPT_URL` | Override the hosted web-component URL. |
+| `VITE_ADINALS_OVERLAY_URL` | Enable browser overlay delivery at an explicit endpoint; local Vite development defaults to `http://localhost:8080`. |
 
 Do not change the production namespace, key protocol, basket, or action labels
 casually; existing wallet custody and public records depend on them.
@@ -139,12 +140,85 @@ transitions, and eight decisions with no failures or unresolved confirmed spend
 links. It is not deployed publicly or used by the production browser yet;
 GorillaPool remains the live discovery path.
 
+The browser write path now queues every wallet-accepted collection and
+lifecycle transaction to the local overlay using the same verified Atomic
+BEEF. It treats submit as a processing acknowledgment, polls exact hydrated
+outputs, persists provisional/indexed/retrying/failed delivery state, and
+retries outages without changing the wallet action's success. Updates require
+both state output 0 and record output 1. Local Vite development uses
+localhost:8080; production builds require an explicit HTTPS overlay URL and
+therefore never call a visitor's localhost. The live wallet-to-LARS canary is
+still pending, and GorillaPool remains the production discovery and fallback
+path while the live canary and repeated local shadow observation remain
+incomplete.
+
+The 2026-08-02 local checkpoint has only the required Adinals MySQL, Mongo, and
+overlay containers running. Health and service registration pass, the populated
+production-fixture smoke replay remains idempotent with 11 already-present
+transactions and a 19-output collection-live proof, and the reusable client
+passes a live duplicate submit plus hydrated exact-output lookup. No new wallet
+transaction was created or broadcast for that check.
+
+The frontend proof adapter now reconstructs semantic state from hydrated
+overlay formulas while a separate adapter normalizes the current public reader.
+Two consecutive `npm run overlay:parity` runs pass across all five discovered
+collections and 18 canonical ads: live membership, current outpoints and owners,
+proposal state, creative text or image bytes/source, collection rules,
+expiration, and display eligibility agree with the current public reader. The
+two retained complete vectors also match ownership history, owner epoch, and
+final listing state. This remains shadow validation and does not switch
+production reads.
+
+`npm run overlay:reconcile` is the confirmed-only recovery path for marketplace
+spends created elsewhere or writes missed when a browser closes. It combines
+independently proven predecessor/spender transactions, submits through the
+normal Topic Manager, and waits for exact successor visibility. Its first full
+live pass checked all 18 current states with zero failures and no missing
+confirmed spends. Unconfirmed spends are deliberately left to immediate browser
+submission or a later confirmed pass.
+
+The first real local browser attempt minted production Ad #4 at
+`4eeb833ffd469fb9952385d7659f9c1a63fc36658c9d2c3d7ab2298ebab4c7e0_0`.
+The wallet broadcast and GorillaPool/public-reader checks passed, increasing
+the public namespace inventory to 19 mints, but LARS exact lookup remained
+empty and received no `/submit` for that transaction. The canary therefore has
+not passed. The main receipt now displays local-overlay state separately from
+GorillaPool indexing and follows background queue transitions; reload the local
+client before the next check. Startup now also recreates a missing queue entry
+from the accepted publication record and retained Atomic BEEF, without relying
+on a public indexer or weakening overlay validation. A second hard refresh did
+not recover this live mint, so immediate browser delivery remains an open
+defect. A scoped confirmed-only backfill passed with 16 existing transactions
+and zero failures; it correctly skipped still-unconfirmed Ad #4 and remains the
+eventual recovery path after confirmation.
+
+Local development now routes overlay calls through the same-origin
+`/adinals-overlay` Vite proxy to port 8080. The accepted publication path awaits
+its first delivery cycle and reports the actual overlay result, avoiding a
+silent fire-and-forget request while preserving wallet success.
+The first post-proxy refresh found no retained Ad #4 queue/BEEF row to replay,
+so that existing mint still awaits confirmed backfill and does not count as a
+successful browser proxy canary.
+
+Ad #5 then exposed the browser-only cause: native `fetch` was invoked with the
+overlay client as its receiver, and Brave rejected it as an illegal invocation
+before HTTP. The client now invokes `globalThis.fetch` through a wrapper, with
+a regression test. Ad #5's BEEF remains in the durable retry queue.
+
+The retained retry then passed without another transaction: Brave submitted
+the 2,329-byte BEEF through the same-origin proxy, LARS responded in 573 ms,
+and exact output 0 became visible with hydrated BEEF before confirmation. The
+live immediate browser-to-overlay canary is now complete.
+After confirmation, the scoped backfill admitted Ad #4 as exactly one new
+transaction with zero failures, and LARS now returns its exact output 0 with
+hydrated BEEF. Confirmed eventual recovery is therefore proven.
+
 ## Roadmap
 
 1. Complete the remaining wallet-restart, image-lifecycle, and emergency-switch
    beta drills, then tag the reference application.
-2. Submit successful wallet actions to the local overlay and run automated
-   dual-read parity against GorillaPool/the current reader, then deploy the
+2. Complete the live local submission canary, schedule repeated namespace
+   parity and confirmed reconciliation, then deploy the
    BRC-22/BRC-24/BRC-64 service in CARS shadow mode while retaining fallback.
 3. Publish a read-only typed SDK/CLI or MCP interface against a stable
    `api.adinals.com` origin, then add wallet-authorized actions through an

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { lifecyclePublicationTxids, validateLifecyclePublicationReadiness } from './publishLifecycle.ts'
+import { lifecyclePublicationTxids, queueLifecycleForOverlay, validateLifecyclePublicationReadiness } from './publishLifecycle.ts'
+import type { OverlaySubmission } from '../overlay/submissionQueue.ts'
 
 const ANCHOR = 'a'.repeat(64)
 const MINT = 'b'.repeat(64)
@@ -37,4 +38,27 @@ test('lifecycle readiness requires fresh exact nosend and public absence evidenc
   assert.throws(() => validateLifecyclePublicationReadiness(mint, { ...preflight, walletStatuses: { ...preflight.walletStatuses, [MINT]: 'sending' } }, new Date('2026-07-31T20:01:00.000Z')), /nosend/)
   assert.throws(() => validateLifecyclePublicationReadiness(mint, { ...preflight, allReadersAbsent: false }, new Date('2026-07-31T20:01:00.000Z')), /public reader/)
   assert.throws(() => validateLifecyclePublicationReadiness(mint, preflight, new Date('2026-07-31T20:02:00.001Z')), /stale/)
+})
+
+test('an update queues both exact overlay outputs from the verified BEEF', async () => {
+  const writes: OverlaySubmission[] = []
+  const action = {
+    ...update,
+    outpoint: `${UPDATE}_1`,
+    stateOutpoint: `${UPDATE}_0`,
+    atomicBeef: [1, 2, 3],
+  } as Parameters<typeof queueLifecycleForOverlay>[0]
+  const queued = await queueLifecycleForOverlay(action, {
+    store: {
+      async put(record) { writes.push(structuredClone(record)) },
+      async listPending() { return [] },
+    },
+    client: {
+      async submit() { throw new Error('overlay offline') },
+      async hasOutput() { return false },
+    },
+  })
+  assert.deepEqual(queued?.outpoints, [`${UPDATE}_0`, `${UPDATE}_1`])
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(writes.at(-1)?.status, 'retrying')
 })

@@ -5,7 +5,7 @@ boundary. A TypeScript build alone is not compatibility: a passing action must
 also preserve exact transaction bytes, signatures, output positions, custody,
 and recovery behavior.
 
-Last updated: 2026-08-01.
+Last updated: 2026-08-02.
 
 ## Shared wallet contract
 
@@ -112,8 +112,12 @@ that every negative vector is rejected.
 | Production lifecycle parity manifest | Two complete sale/update/approval vectors retained and passing against a populated overlay |
 | Stable public API origin | Pending `api.adinals.com` before agent SDK release |
 | Local overlay admission/history | Pass: clean confirmed v3 namespace replay admitted 69 transactions with zero failures |
-| Browser dual-read and unconfirmed overlay submission | Pending |
-| CARS shadow deployment | Pending after dual-read parity |
+| Local overlay restart/client smoke | Pass: required containers only; 11-transaction idempotent lifecycle replay and reusable-client exact lookup pass |
+| Browser unconfirmed overlay submission | Pass: retained Ad #5 BEEF retried through Brave/Vite, LARS returned 200 in 573 ms, and exact hydrated output 0 was visible before confirmation |
+| Browser dual-read parity | Pass in two consecutive local runs: 5 collections, 18 canonical ads, image byte hashes, and two deep lifecycle histories match |
+| Confirmed external-spend reconciliation | Implemented and automated; live scan checked 18 current states with zero failures and no missing spends |
+| Confirmed missed-mint backfill | Pass: Ad #4 was admitted as exactly one new transaction after confirmation and exact output 0 is hydrated |
+| CARS shadow deployment | Pending live wallet canary and repeated clean local shadow runs |
 | Agent SDK/CLI/MCP interface | Not implemented |
 | Publisher moderation/reputation layer | Not implemented |
 
@@ -126,9 +130,9 @@ for the current beta.
 1. Complete live restart recovery in Yours and Metanet, one image lifecycle,
    and an emergency-switch preview drill.
 2. Tag the current frontend/reference verifier as `v0.1.0-beta`.
-3. Submit every successful wallet action to the local LARS overlay and add
-   confirmed reconciliation for marketplace actions created elsewhere.
-4. Dual-read the populated overlay against GorillaPool/current reader before
+3. Run the live local canary for the implemented wallet-to-LARS queue, then
+   schedule the passing namespace parity and confirmed reconciliation commands.
+4. Require repeated clean shadow runs before
    deploying with CARS and
    moving the reader behind `api.adinals.com`.
 5. Publish a read-only agent package, followed by wallet-injected write actions.

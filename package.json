@@ -19,6 +19,8 @@
     "overlay:start": "lars start",
     "overlay:backfill": "node --experimental-strip-types scripts/overlay-backfill.ts",
     "overlay:smoke": "node --experimental-strip-types scripts/overlay-local-smoke.ts",
+    "overlay:parity": "vite build --config scripts/vite.overlay-parity.config.ts && node .overlay-parity-dist/overlay-reader-parity.js",
+    "overlay:reconcile": "vite build --config scripts/vite.overlay-reconcile.config.ts && node .overlay-reconcile-dist/overlay-reconcile.js",
     "overlay:test": "npm test --prefix backend",
     "overlay:typecheck": "npm run typecheck --prefix backend",
     "preview": "vite preview --host 0.0.0.0 --port 4176 --strictPort"

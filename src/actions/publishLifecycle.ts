@@ -10,6 +10,11 @@ import {
   readTransactionNetworkStatus,
   type TransactionNetworkStatus,
 } from '../readers/networkStatus.ts'
+import {
+  enqueueOverlaySubmission,
+  type OverlayDeliveryOptions,
+  type OverlaySubmission,
+} from '../overlay/submissionQueue.ts'
 
 export type LifecyclePublicationWallet = Pick<WalletInterface, 'createAction' | 'listActions'>
 
@@ -99,6 +104,7 @@ export async function publishLifecycleAction(
   wallet: Pick<WalletInterface, 'createAction'>,
   action: AdinalsNoSendAction,
   preflight: LifecyclePublicationPreflight,
+  overlayOptions: OverlayDeliveryOptions = {},
 ): Promise<CollectionPublicationResult> {
   validateLifecyclePublicationReadiness(action, preflight)
   const txids = lifecyclePublicationTxids(action)
@@ -112,8 +118,28 @@ export async function publishLifecycleAction(
         sendWith: txids,
       },
     })
-    return classifyPublicationResponse(txids, response)
+    const result = classifyPublicationResponse(txids, response)
+    return result.outcome === 'accepted'
+      ? { ...result, overlaySubmission: await queueLifecycleForOverlay(action, overlayOptions) }
+      : result
   } catch (error) {
-    return classifyPublicationError(error)
+    const result = classifyPublicationError(error)
+    return result.outcome === 'accepted'
+      ? { ...result, overlaySubmission: await queueLifecycleForOverlay(action, overlayOptions) }
+      : result
   }
+}
+
+export async function queueLifecycleForOverlay(
+  action: AdinalsNoSendAction,
+  options: OverlayDeliveryOptions = {},
+): Promise<OverlaySubmission | null> {
+  const outpoints = action.kind === 'update' && action.stateOutpoint
+    ? [action.stateOutpoint, action.outpoint]
+    : [action.outpoint]
+  return enqueueOverlaySubmission({
+    txid: action.txid,
+    outpoints,
+    atomicBeef: action.atomicBeef,
+  }, options).catch(() => null)
 }

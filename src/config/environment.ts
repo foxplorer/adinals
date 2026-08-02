@@ -7,8 +7,11 @@ import {
 type AdinalsEnvironment = 'development' | 'production'
 
 const viteEnv = (
-  import.meta as ImportMeta & { env?: Record<string, string | undefined> }
+  import.meta as ImportMeta & { env?: Record<string, string | boolean | undefined> }
 ).env ?? {}
+
+const envText = (name: string): string =>
+  typeof viteEnv[name] === 'string' ? (viteEnv[name] as string).trim() : ''
 
 export const ADINALS_ENVIRONMENT: AdinalsEnvironment =
   viteEnv.VITE_ADINALS_ENV === 'development' ? 'development' : 'production'
@@ -21,6 +24,18 @@ export const COLLECTION_PUBLISH_ENABLED =
 // Keep the independent switch as a kill switch, not a deployment requirement.
 export const LIFECYCLE_PUBLISH_ENABLED =
   viteEnv.VITE_ENABLE_LIFECYCLE_PUBLISH !== 'false'
+
+const configuredOverlayUrl = envText('VITE_ADINALS_OVERLAY_URL').replace(/\/+$/, '')
+
+/**
+ * Local Vite development talks to LARS directly. Production builds stay off
+ * the overlay until an explicit HTTPS shadow endpoint is configured; a hosted
+ * application must never try a visitor's localhost.
+ */
+export const ADINALS_OVERLAY_URL = configuredOverlayUrl ||
+  (viteEnv.DEV === true && typeof window !== 'undefined'
+    ? new URL('/adinals-overlay', window.location.origin).toString().replace(/\/$/, '')
+    : '')
 
 const defaults = ADINALS_ENVIRONMENT === 'production'
   ? {
@@ -42,12 +57,12 @@ const defaults = ADINALS_ENVIRONMENT === 'production'
 
 export const ADINALS_NAMESPACE = {
   environment: ADINALS_ENVIRONMENT,
-  app: viteEnv.VITE_ADINALS_APP?.trim() || defaults.app,
-  basket: viteEnv.VITE_ADINALS_BASKET?.trim() || defaults.basket,
-  keyProtocol: viteEnv.VITE_ADINALS_KEY_PROTOCOL?.trim() || defaults.keyProtocol,
-  actionLabel: viteEnv.VITE_ADINALS_ACTION_LABEL?.trim() || defaults.actionLabel,
-  messageBox: viteEnv.VITE_ADINALS_MESSAGEBOX?.trim() || defaults.messageBox,
-  overlayTopic: viteEnv.VITE_ADINALS_OVERLAY_TOPIC?.trim() || defaults.overlayTopic,
+  app: envText('VITE_ADINALS_APP') || defaults.app,
+  basket: envText('VITE_ADINALS_BASKET') || defaults.basket,
+  keyProtocol: envText('VITE_ADINALS_KEY_PROTOCOL') || defaults.keyProtocol,
+  actionLabel: envText('VITE_ADINALS_ACTION_LABEL') || defaults.actionLabel,
+  messageBox: envText('VITE_ADINALS_MESSAGEBOX') || defaults.messageBox,
+  overlayTopic: envText('VITE_ADINALS_OVERLAY_TOPIC') || defaults.overlayTopic,
 } as const
 
 /**
