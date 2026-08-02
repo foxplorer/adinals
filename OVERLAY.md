@@ -799,6 +799,37 @@ empty result, not merely on an error, non-negotiable: an overlay that has never
 ingested a record answers truthfully with nothing, and rendering that as
 absence would be worse than the lag it replaces.
 
+## Overlay read latency
+
+Reads must be fast before they can be moved, and measurements from live sessions
+show they are not yet. Shadow reads against the deployed node reported 4,527 ms,
+3,347 ms, and 7,068 ms for three collections while the derived reader answered
+the same questions in 524 ms, 1,322 ms, and 1,670 ms.
+
+The cause is round trips, not bandwidth or database work. On a reused
+connection the node answers a trivial `/health` request in about 200
+milliseconds, its first request costs roughly a second because of the TLS
+handshake, and its own health checks report Knex and Mongo responding in one to
+three milliseconds. Responses are already gzip encoded, which browsers request
+automatically: the largest collection query drops from 687 KB to 270 KB on the
+wire.
+
+`readOverlayLifecycleProjection` issues two requests plus two per ad: the
+collection, its membership, then `history` and `adCurrent` for every mint. A
+five-ad collection therefore costs twelve round trips. A single `collectionLive`
+query returns the same evidence in one response, twenty-one outputs and 35 KB of
+BEEF for that collection, so the projection can be derived from one or two
+requests rather than twelve.
+
+Image collections compound the problem because the same large BEEF is returned
+by several queries. Deduplicating hydrated transactions by transaction ID in the
+client would avoid transferring a 188 KB cover more than once.
+
+Consolidating those queries is a prerequisite for stage two rather than an
+optimisation to follow it. Parity is the safety net: a projection rebuilt from
+`collectionLive` must produce byte-identical results to the current one, and the
+existing suite proves that without new tests.
+
 ## Reader migration plan
 
 Overlay delivery is a write path. The product still reads through
