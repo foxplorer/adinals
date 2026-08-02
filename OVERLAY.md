@@ -861,6 +861,31 @@ candidate has no retained reference: recovery is read-only and never learns
 those handles, so such an action can only be released from the wallet's own
 interface. Wallet-local references stay out of exported fixtures.
 
+### Releasing an action whose reference was lost
+
+BRC-100 offers no recovery once a `createAction` reference is discarded:
+`listActions` returns `txid`, `satoshis`, `status`, `description`, labels, and
+inputs/outputs, but never a reference, and `abortAction` accepts nothing else.
+`relinquishOutput` is unrelated; it removes an output from a basket rather than
+releasing an action's reserved inputs.
+
+`@bsv/wallet-toolbox` fills that gap with reserved `listActions` labels. Passing
+`ac6b20a3bb320adafecd637b25c84b792ad828d3aa510d05dc841481f664277d`
+(`specOpNoSendActions`) filters to `nosend` status, and adding the literal label
+`abort` makes its storage layer call `abortAction` for each match using the
+reference it holds internally. A parallel `specOpInvalidChange` basket value
+releases change outputs that no longer validate, and
+`bsv-blockchain/ts-stack#188` added the IndexedDB status review that repairs
+outputs still held by terminally failed transactions.
+
+`src/wallet/noSendMaintenance.ts` exposes this as a reviewed and a releasing
+call, surfaced in the developer panel behind an explicit acknowledgement. Two
+properties matter. It is a wallet-toolbox extension rather than a BRC-100
+guarantee, so a wallet that does not implement it treats the value as an
+ordinary label and releases nothing, which is a safe outcome. And releasing is
+not scoped to this application: every `nosend` action for the connected wallet
+user is aborted, including a rehearsal that was about to be published.
+
 ## Admitted transaction coverage
 
 A shadow node is only useful if every kind of Adinals transaction reaches it, so

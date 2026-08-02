@@ -24,6 +24,10 @@ import {
 } from '../fixtures/rehearsalStore.ts'
 import { releaseCollectionRehearsal } from '../actions/releaseCollectionRehearsal.ts'
 import {
+  reviewNoSendActions,
+  type NoSendActionSummary,
+} from '../wallet/noSendMaintenance.ts'
+import {
   loadCollectionPublicationAttempt,
   saveCollectionPublicationAttempt,
   type CollectionPublicationAttempt,
@@ -158,6 +162,39 @@ function CollectionWorkspace() {
   const [retainedRehearsals, setRetainedRehearsals] = useState<RetainedCollectionRehearsal[]>([])
   const [releasing, setReleasing] = useState('')
   const [releaseNote, setReleaseNote] = useState('')
+  const [noSendSummary, setNoSendSummary] = useState<NoSendActionSummary | null>(null)
+  const [noSendBusy, setNoSendBusy] = useState(false)
+  const [noSendNote, setNoSendNote] = useState('')
+  const [noSendUnderstood, setNoSendUnderstood] = useState(false)
+
+  /**
+   * Wallet-side review of every no-send action, including rehearsals whose
+   * abort reference this application never retained. Releasing is not scoped to
+   * Adinals and cannot be undone.
+   */
+  const reviewNoSend = async (abort: boolean) => {
+    if (!wallet) return
+    setNoSendBusy(true)
+    setNoSendNote('')
+    try {
+      const summary = await reviewNoSendActions(wallet, { abort })
+      setNoSendSummary(summary)
+      setNoSendNote(abort
+        ? `Requested release of ${summary.totalActions} no-send action(s).`
+        : `${summary.totalActions} no-send action(s) currently reserve wallet funding.`)
+      if (abort) {
+        setNoSendUnderstood(false)
+        await refreshRetainedRehearsals()
+      }
+    } catch (noSendError) {
+      setNoSendSummary(null)
+      setNoSendNote(
+        `${noSendError instanceof Error ? noSendError.message : String(noSendError)} — this wallet may not implement the reserved maintenance label.`,
+      )
+    } finally {
+      setNoSendBusy(false)
+    }
+  }
 
   const refreshRetainedRehearsals = useCallback(async () => {
     if (!session) return
@@ -442,6 +479,61 @@ function CollectionWorkspace() {
 
   return (
     <div className="collection-workspace-stack">
+      <section className="collection-recovery" aria-label="Wallet no-send maintenance">
+        <div>
+          <span className="phase-badge">Wallet-side release</span>
+          <h3>No-send actions holding wallet funding</h3>
+          <p>
+            <code>abortAction</code> needs the reference <code>createAction</code> returned, and <code>listActions</code>
+            {' '}never returns one, so an action whose reference was lost cannot be released through BRC-100 alone.
+            Wallet-toolbox wallets accept a reserved maintenance label that filters to no-send actions and releases them
+            using the reference the wallet holds internally.
+          </p>
+          <p>
+            Reviewing is read-only. Releasing aborts <strong>every</strong> no-send action for this wallet user, not only
+            Adinals rehearsals, so a rehearsal you intended to publish would be destroyed with the stranded ones. A wallet
+            that does not implement the label releases nothing.
+          </p>
+        </div>
+        <div className="adlab-wallet-actions">
+          <button type="button" className="ads-back" disabled={!wallet || noSendBusy} onClick={() => void reviewNoSend(false)}>
+            {noSendBusy ? 'Asking wallet…' : 'Review reserved no-send actions'}
+          </button>
+        </div>
+        {noSendSummary && noSendSummary.totalActions > 0 && (
+          <>
+            <p>
+              {noSendSummary.totalActions} action(s) reserving about {noSendSummary.satoshis.toLocaleString()} satoshis.
+            </p>
+            <ul className="retained-rehearsals">
+              {noSendSummary.actions.map((entry) => (
+                <li key={entry.txid}>
+                  <code>{shortKey(entry.txid)}</code>
+                  <span>{entry.description}</span>
+                  <span>{Math.abs(entry.satoshis).toLocaleString()} sats</span>
+                </li>
+              ))}
+            </ul>
+            <label>
+              <input
+                type="checkbox"
+                checked={noSendUnderstood}
+                onChange={(event) => setNoSendUnderstood(event.target.checked)}
+              />
+              <span>I understand this aborts every no-send action in this wallet and cannot be undone.</span>
+            </label>
+            <button
+              type="button"
+              className="ads-back ads-reject"
+              disabled={!wallet || noSendBusy || !noSendUnderstood}
+              onClick={() => void reviewNoSend(true)}
+            >
+              Release all no-send actions
+            </button>
+          </>
+        )}
+        {noSendNote && <p role="status">{noSendNote}</p>}
+      </section>
       <section className="collection-recovery" aria-label="Retained no-send rehearsals">
         <div>
           <span className="phase-badge">Reserved wallet funding</span>

@@ -70,6 +70,10 @@ change the Adinals transaction or authorization rules.
   became actionable after block confirmation.
 - Creator decision records indexed promptly once their referenced ownership
   transition was derivable.
+- `abortAction` requires the reference `createAction` returned, and `listActions`
+  never returns one, so an action whose reference is lost cannot be released
+  through BRC-100 alone. Wallet-toolbox wallets accept reserved `listActions`
+  labels that release no-send actions using the reference they hold internally.
 - A no-send action reserves its funding input and its no-send change until it is
   published or aborted, while the wallet still counts both in its displayed
   balance. One abandoned collection rehearsal can therefore make most of a
