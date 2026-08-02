@@ -752,6 +752,33 @@ while the public content host was still propagating it.
 Still untested at that scale: a large image mint, a large image update, which is
 the only two-output case, and either on Yours Wallet with the current code.
 
+## Why reads should move to the overlay
+
+The overlay is not a faster index in front of GorillaPool. It is the only source
+that hands a client the evidence to check an answer itself: BEEF carries the
+transaction, its ancestry, and its merkle proofs, so a reader verifies
+ownership, signatures, and history by SPV instead of trusting a service. That is
+the property worth building on, and it is what lets participation scale, because
+each participant validates only the transactions it cares about rather than the
+whole chain.
+
+Two consequences follow for this application.
+
+Reading from the overlay and depending on it are different things. Once reads
+move, GorillaPool stops being a source of truth and remains only a source of
+discovery: an Adinal sold or transferred outside this application is invisible
+to the overlay until reconciliation finds it, a peer synchronises it, or someone
+submits it. Federation through SHIP, SLAP, and GASP is what eventually removes
+that, and it needs a second node running `tm_adinals`.
+
+Availability must never be a protocol concern. A CARS balance that runs out, a
+node that restarts, or an endpoint that changes must degrade the application to
+the existing reader silently, because a funded server is an operational detail
+while the records are permanent. That requirement is what makes fallback on an
+empty result, not merely on an error, non-negotiable: an overlay that has never
+ingested a record answers truthfully with nothing, and rendering that as
+absence would be worse than the lag it replaces.
+
 ## Reader migration plan
 
 Overlay delivery is a write path. The product still reads through
