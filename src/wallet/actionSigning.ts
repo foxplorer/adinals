@@ -97,6 +97,24 @@ export async function signDerivedP2PKHInput(
     .toHex()
 }
 
+
+/**
+ * Runs a local `Spend` check and labels any failure as ours. The wallet uses
+ * the same SDK, so an unlabelled script evaluation error gives no clue about
+ * which side rejected the input.
+ */
+const verifyLocally = (index: number, build: () => Spend): boolean => {
+  try {
+    return build().validate()
+  } catch (error) {
+    throw new Error(
+      `Local verification of input ${index} failed before the wallet was asked to sign: `
+      + `${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    )
+  }
+}
+
 export async function completeNoSendAction(
   wallet: WalletInterface,
   created: CreateActionResult,
@@ -131,21 +149,24 @@ export async function completeNoSendAction(
       const input = transaction.inputs[index]
       const sourceOutput = input?.sourceTransaction?.outputs[input.sourceOutputIndex]
       if (!input || !sourceOutput) throw new Error(`Missing source output for input ${index}.`)
-      input.unlockingScript = Script.fromHex(spend.unlockingScript)
-      const verified = new Spend({
+      const unlockingScript = Script.fromHex(spend.unlockingScript)
+      input.unlockingScript = unlockingScript
+      // The wallet uses the same SDK, so an unlabelled script error could come
+      // from either side. Name this one as ours before it propagates.
+      const verified = verifyLocally(index, () => new Spend({
         sourceTXID: input.sourceTXID ?? input.sourceTransaction?.id('hex') ?? '',
         sourceOutputIndex: input.sourceOutputIndex,
         lockingScript: sourceOutput.lockingScript,
         sourceSatoshis: sourceOutput.satoshis ?? 0,
         transactionVersion: transaction.version,
         otherInputs: transaction.inputs.filter((_, otherIndex) => otherIndex !== index),
-        unlockingScript: input.unlockingScript,
+        unlockingScript,
         inputSequence: input.sequence ?? 0xffffffff,
         inputIndex: index,
         outputs: transaction.outputs,
         lockTime: transaction.lockTime,
-      }).validate()
-      if (!verified) throw new Error(`Script verification failed for input ${index}.`)
+      }))
+      if (!verified) throw new Error(`Local script verification failed for input ${index}.`)
     }
   } catch (error) {
     const aborted = await wallet.abortAction({ reference })
@@ -172,7 +193,10 @@ export async function completeNoSendAction(
       .then((result) => result.aborted)
       .catch(() => false)
     if (lostSignActionSession(error)) throw new LostSignActionSessionError(reference, aborted)
-    throw error
+    throw new Error(
+      `The wallet rejected the signed inputs: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    )
   }
   if (!signed.txid || !signed.tx) throw new Error('The wallet did not return the no-send transaction.')
   return {
