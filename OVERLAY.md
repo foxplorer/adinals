@@ -762,25 +762,31 @@ references, or unbroadcast Atomic BEEF in a public commit.
 
 ## Image records
 
-The production namespace already contains image records: one image collection,
-two image mints, and one image update, all admitted by the topic manager and
-compared during parity by content hash as well as by source outpoint. Image
-admission and resolution are therefore proven against real records rather than
-only against fixtures.
+The production namespace already contains image records at real sizes. The
+Billboards collection cover is a 187 KB PNG, one of its ad updates carries a
+107 KB PNG, and two of its mints are a few hundred bytes each. All are admitted
+by the topic manager and compared during parity by content hash as well as by
+source outpoint, so image admission and resolution are proven against genuine
+records rather than fixtures alone. The 150 KB regression vector in the script
+self-test exists because a record of that scale previously overflowed the
+argument stack during parsing.
 
-Typical Adinals creatives are small. At around 2.3 KB an image record is barely
-larger than a text one, so the anchor fee reserve, the browser's BEEF assembly,
-and the submission body are all ordinary. Transport has headroom regardless:
-200 KB, 1 MB, and 4 MB `POST /submit` requests all reach the hosted application
-and are rejected as invalid BEEF with HTTP 400 rather than refused by an ingress
-with 413.
+Size therefore matters, and it shows up first as cost. The anchor reserve is
+computed from the unsigned record's byte length at a 100 satoshi per kilobyte
+reference rate, so the 187 KB cover reserves roughly nineteen thousand satoshis
+rather than the 200-satoshi floor a text record uses. An under-estimate makes
+the wallet add funding inputs of its own, which is handled but was only fixed
+once the anchor stopped being read from a fixed position.
 
-What remains untested is a live image write through the current code: creating
-an image collection, minting an image ad, and updating one, on each wallet. The
-automated suite covers parsing and SIGMA against a 150 KB vector, which
-exercises the code but not a wallet signing and broadcasting it. Only very large
-creatives would make size itself a factor, and none of the production records
-approach that.
+Transport has headroom: 200 KB, 1 MB, and 4 MB `POST /submit` requests all reach
+the hosted application and are rejected as invalid BEEF with HTTP 400 rather
+than refused by an ingress with 413.
+
+What remains untested is a large image write on current code. The existing
+187 KB cover was created by an earlier code path, and the recent live runs used
+roughly 2.3 KB creatives, so neither exercises today's anchor handling and
+signing changes at billboard scale. One large image mint and one large image
+update, on each wallet, would close it.
 
 ## Reader migration plan
 
