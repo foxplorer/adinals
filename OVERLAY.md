@@ -924,7 +924,29 @@ read on the render path, the slower half still needs identifying.
 views read from the overlay and fall back to the current reader. Nothing on the
 site is populated from the overlay today: the CARS node receives every write and
 is compared on every collection view, while every rendered value still comes
-from GorillaPool and the derived reader. The fallback
+from GorillaPool and the derived reader.
+
+The work is a mapping exercise rather than a data problem. The application's ad
+view model carries twenty-two fields where `LifecycleProjection` produces nine,
+missing the mint's name, text, link, and timestamp, its chain position, the
+creator and duplicate-slot verdicts, the update timeline, the market event
+timeline, and the live creative URL. Every one of those is derivable from the
+single projection response already in hand: the mint record and its MAP supply
+the metadata, the BEEF merkle path supplies block position for confirmed
+transactions, and the same chain walk that produces the ownership outpoints
+produces the market events. No additional requests are required.
+
+The order that keeps the application working throughout:
+
+1. Extend the overlay projection into the application's view model, so one
+   response yields collections and ads exactly as the current reader does.
+2. Render from it with fallback to the existing reader on an empty result, an
+   error, or a timeout, behind a loading state.
+3. Serve creatives from the same response, which removes the one-block window.
+4. Only then simplify the GorillaPool submission to a fire-and-forget txid,
+   dropping the exact-outpoint poll. That poll currently tells the interface
+   when a record has become visible to the path it reads from; removing it
+   before reads move would report success while a record is still invisible. The fallback
 must trigger on an *empty* result as well as an error, because an overlay only
 knows what was submitted or backfilled into it and cannot discover a record it
 never ingested. Rendering a never-ingested record as missing would be worse than
