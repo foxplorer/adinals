@@ -836,6 +836,21 @@ than by filtering, because one response interleaves every ad in the collection.
 Each output is still hydrated, txid-checked, and signature-checked exactly as
 before, and the per-ad path is retained for a node without the query.
 
+Browser measurements after the deployment confirm it: the Billboards collection
+fell from 7,068 to 2,782 milliseconds, the image cover collection to 2,315, and
+text collections now answer in 776 to 895 milliseconds. That is slow enough to
+want a loading state and fast enough to render from, which the per-ad pattern
+was not.
+
+Two levers remain if it needs to be faster. Image-heavy collections are
+dominated by creative bytes, which is the transfer a content host would
+otherwise perform, so the only real saving there is a hash-reference record
+version. Text collections are dominated by server work rather than transfer: the
+resolver calls `findAllRecords` and resolves in memory on every request, so it
+scans everything the node holds instead of querying by collection. Indexing that
+path is the next meaningful gain, and it grows more important as the namespace
+does.
+
 `npm run overlay:projection-diff` compares the two paths against each other
 rather than against a public reader, so a stale node cannot mask a difference.
 All eight collections on the hosted node match exactly, and the measured
