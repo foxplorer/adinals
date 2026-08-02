@@ -782,11 +782,24 @@ Transport has headroom: 200 KB, 1 MB, and 4 MB `POST /submit` requests all reach
 the hosted application and are rejected as invalid BEEF with HTTP 400 rather
 than refused by an ingress with 413.
 
-What remains untested is a large image write on current code. The existing
-187 KB cover was created by an earlier code path, and the recent live runs used
-roughly 2.3 KB creatives, so neither exercises today's anchor handling and
-signing changes at billboard scale. One large image mint and one large image
-update, on each wallet, would close it.
+A large image collection cover has since been created on Metanet Desktop with
+the current code, at
+`41028763a833a3c4cef4befcb7c0b27b734181f1d185d9fc37a9098b9acc6009_0`. It cost
+about eleven thousand satoshis, matching the reserve computed from the record's
+byte length, and the wallet needed no correction. The path it exercises is the
+widest in the application: the anchor is sized and located, the record is
+signed, the recovery audit re-reads the entire transaction back out of the
+wallet basket and re-verifies inscription, MAP, SIGMA, and canonical
+reconstruction against it, and publication broadcasts the anchor and record
+together.
+
+The hosted node admitted its 129,011-byte BEEF from the browser, the largest
+submission it has received. At that moment GorillaPool's content endpoint still
+returned no image, so the creative was retrievable with proof from the overlay
+while the public content host was still propagating it.
+
+Still untested at that scale: a large image mint, a large image update, which is
+the only two-output case, and either on Yours Wallet with the current code.
 
 ## Reader migration plan
 
