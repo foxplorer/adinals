@@ -148,15 +148,17 @@ Opening a collection also schedules one background shadow read that projects
 the same collection from the overlay and records whether the two agree. Nothing
 it produces reaches the screen.
 
-Reads have not moved, and moving them is the current direction rather than a
-finished state. The application is stable on the current path: nothing renders
-from the overlay yet, the groundwork is in place, and the ordered migration
-steps are in [OVERLAY.md](OVERLAY.md). The reason is not speed: BEEF lets a client verify ownership,
-signatures, and history by SPV instead of trusting a service. One measured
-consequence already shows the gap. A newly published image ad is served by the
-overlay immediately, while public content hosts return 404 until the
-transaction confirms, and the derived reader fails the entire ad rather than
-part of it. The staged plan, its prerequisites, and the federation work that
+Reads have not moved. Nothing renders from the overlay yet, the application is
+stable on the current path, and the groundwork is in place.
+
+Moving them is the current direction, and the reason is not speed: BEEF lets a
+client verify ownership, signatures, and history by SPV instead of trusting a
+service. One measured consequence already shows the gap. A newly published image
+ad is served by the overlay immediately, while public content hosts return 404
+until the transaction confirms, and the derived reader fails the entire ad
+rather than part of it.
+
+The ordered migration steps, their prerequisites, and the federation work that
 would remove the last discovery dependency are in
 [OVERLAY.md](OVERLAY.md).
 
