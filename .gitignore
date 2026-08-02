@@ -24,6 +24,9 @@ cars_artifact_*.tgz
 .env
 .env.*
 !.env.example
+# The production endpoint is public infrastructure, not a secret, and hosts
+# without dashboard variables need it committed to build correctly.
+!.env.production
 
 # Editor and operating-system files
 .DS_Store

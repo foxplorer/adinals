@@ -38,6 +38,7 @@ import {
   type LabWriteResult,
 } from '../wallet/productWallet'
 import { ADINALS_NAMESPACE, ADINALS_OVERLAY_URL } from '../config/environment.ts'
+import { runOverlayShadowRead } from '../readers/overlayShadowReadClient.ts'
 import type {
   OverlaySubmission,
   OverlaySubmissionStatus,
@@ -211,6 +212,8 @@ const isUnconfirmedCurrentListing = (ad: Ad): boolean =>
     )
   )
 const PROOF_RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000] as const
+/** Lets the rendered view settle before the background overlay comparison runs. */
+const OVERLAY_SHADOW_READ_DELAY_MS = 1_500
 
 type CreatorReviewStats = {
   count: number
@@ -777,7 +780,7 @@ function RecentAdActionLine({ action }: { action: RecentAdAction }) {
             ? 'Broadcast · indexed'
             : 'Broadcast · index submission delayed'}
       </small>
-      {action.overlayStatus && <small>Local overlay · {action.overlayStatus}</small>}
+      {action.overlayStatus && <small>Overlay · {action.overlayStatus}</small>}
     </span>
   )
 }
@@ -805,8 +808,8 @@ function ReceiptLine({ receipt, onDismiss }: { receipt: Receipt; onDismiss: () =
         </span>
         {receipt.overlayStatus && (
           <span>
-            Local overlay: {receipt.overlayStatus === 'not-queued'
-              ? 'not queued—refresh this local app before another canary.'
+            Overlay: {receipt.overlayStatus === 'not-queued'
+              ? 'not queued—refresh this app before another canary.'
               : receipt.overlayStatus}
           </span>
         )}
@@ -1314,6 +1317,24 @@ export function AdLab() {
   useEffect(() => {
     if (!keys) setActiveTab('collections')
   }, [keys])
+  // Stage one of overlay reads: compare the configured overlay against the
+  // rendered public reader in the background and retain the result. Nothing
+  // here feeds the view, so an unavailable overlay changes nothing on screen.
+  useEffect(() => {
+    if (!selected || !ADINALS_OVERLAY_URL) return
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      void runOverlayShadowRead(selected).catch(() => null).then((result) => {
+        if (!cancelled && result?.status === 'diverged') {
+          console.warn('Overlay shadow read diverged', result.origin, result.errors)
+        }
+      })
+    }, OVERLAY_SHADOW_READ_DELAY_MS)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [selected])
   useEffect(() => {
     const onOverlayStatus = (event: Event) => {
       const record = (event as CustomEvent<OverlaySubmission>).detail

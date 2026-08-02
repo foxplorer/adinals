@@ -716,27 +716,37 @@ Verified state as of 2026-08-02:
 - The confirmed dry-run inventory is now 5 collections, 20 mints, 38 lifecycle
   transitions, 12 updates, and 8 decisions, that is 71 transactions, with no
   unresolved confirmed spend links.
-- CARS is prepared and undeployed: `@bsv/cars-cli` 1.2.9 is pinned, the
-  `adinals-shadow` mainnet backend-only configuration exists with no
-  `projectID` so releases fail closed, `npm run overlay:cars:preflight` reports
-  a clean packaging boundary, and one local 10.9 MB artifact was built,
-  inspected, and deleted. Nothing was uploaded and no project exists.
-- All 32 application test files (139 tests), 33 backend tests, backend
+- The CARS shadow node is deployed at
+  `https://backend.93913ed6b421f18f80e669c61239a690.projects.babbage.systems`,
+  release `6cbe8de96aea771de80508ad368f51ae`. It replayed 70 of 71 confirmed
+  transactions, received the unconfirmed Ad #5 by relay, and passes full shadow
+  rounds against the public reader. Burn is 108 satoshis per five minutes and
+  single top-ups are capped at 10,000 satoshis.
+- The cross-origin browser canary passed: a Metanet Desktop collection,
+  `541cbf83d45fb2f33c6fb555ce6cf506d63a1a8063ed7a5b940cf101aa224d86_0`,
+  delivered its BEEF from Brave to the hosted node with no proxy and reached
+  `indexed`. The local LARS node holds nothing for it, which proves the routing.
+- `.env.production` is committed so a host without dashboard environment
+  variables builds with the CARS endpoint; `.env` overrides it locally.
+- Collection publication no longer requires a single input. The anchor rule
+  lives in `src/actions/collectionAnchor.ts` and checks input 0 against the
+  signed anchor outpoint, which unblocked Metanet Desktop.
+- All 33 application test files (144 tests), 33 backend tests, backend
   typecheck, the script self-test, and the production Vite build pass.
 
 Implement the next phase:
 
-1. Keep running scheduled `npm run overlay:shadow` rounds locally and preserve
-   the exact divergence reports; investigate any non-clean round before moving
-   on.
-2. With explicit permission and real funds, create and fund a CARS mainnet
-   project, set its `projectID` on `adinals-shadow`, build, and release.
-3. Replay history into the new node with `ADINALS_OVERLAY_URL=https://<host>
-   npm run overlay:backfill` before trusting it, then run the same shadow
-   harness against that endpoint.
-4. Keep GorillaPool as fallback and do not switch production reads or set
-   `VITE_ADINALS_OVERLAY_URL` in a production build until the shadow node's
-   parity has no unexplained divergence.
+1. Keep running scheduled `npm run overlay:shadow` rounds against both the local
+   node and the CARS endpoint, and preserve the exact divergence reports;
+   investigate any non-clean round before moving on.
+2. Watch the CARS balance. Top-ups are capped at 10,000 satoshis each and the
+   CLI reports success even when the cloud rejects the payment, so read the
+   balance back after every attempt. An exhausted node degrades browser
+   receipts to `retrying` without affecting wallet broadcasts.
+3. Confirm the Metanet Desktop collection path end to end for a mint, update,
+   and decision now that its funding input is accepted.
+4. Keep GorillaPool as fallback and do not switch production reads until the
+   shadow node's parity has no unexplained divergence over a longer period.
 5. Update OVERLAY.md, README.md, and BRC100_COLLECTION_MATRIX.md with exact
    results.
 
@@ -749,6 +759,68 @@ Do not clear local-data unless a clean rebuild of the disposable overlay is
 genuinely required. Do not include generated keys, database state, wallet-local
 references, or unbroadcast Atomic BEEF in a public commit.
 ```
+
+## Reader migration plan
+
+Overlay delivery is a write path. The product still reads through
+`src/readers/productCatalog.ts`, which uses GorillaPool for discovery, spend
+history, and content, with WhatsOnChain for raw transactions. Moving reads onto
+the overlay happens in three stages, and only the first is implemented.
+
+**Stage 1, implemented: shadow read.** When an overlay endpoint is configured,
+opening a collection schedules one background comparison 1.5 seconds later.
+`src/readers/overlayShadowRead.ts` reads the derived public projection, reads
+the same projection from the overlay, compares them with the parity suite's own
+`comparePublicLifecycleProjection`, and retains the result. Nothing it produces
+reaches the view. A missing baseline is recorded as `reference-unavailable`
+rather than blamed on the overlay, both reads are bounded by a 12-second
+timeout, and every outcome resolves instead of throwing. Results are retained in
+memory and announced as `adinals-overlay-shadow-read` events. The comparison
+module deliberately avoids importing `@1sat/templates` so it can be unit-tested
+under Node; `src/readers/overlayShadowReadClient.ts` performs the wiring that
+cannot be.
+
+**Stage 2, not started: overlay-first hydration.** Ad and collection detail
+views read from the overlay and fall back to the current reader. The fallback
+must trigger on an *empty* result as well as an error, because an overlay only
+knows what was submitted or backfilled into it and cannot discover a record it
+never ingested. Rendering a never-ingested record as missing would be worse than
+the lag it replaces.
+
+**Stage 3, not started: overlay-first discovery.** Collection and ad listings
+come from the overlay once its ingestion has proven complete over a longer
+period, with the current reader retained as fallback.
+
+Two decisions already fixed. Creative images continue to load from public
+content hosts such as ordfs and GorillaPool rather than being reconstructed from
+BEEF; the overlay supplies the content hash that makes those bytes verifiable,
+which is the property that matters. And a lapsed CARS balance must degrade reads
+silently to the fallback path, never to an error, because the node's funding is
+an operational detail rather than a protocol one.
+
+## Collection anchor position and wallet funding
+
+The first Metanet Desktop collection publication exposed a browser-side rule
+that was stricter than the protocol. Version 3 anchors a collection's SIGMA
+signature to the outpoint spent at input 0, and both the browser verifier and
+`backend/src/protocol/recordEnvelope.ts` read the anchor from input 0 while
+ignoring later inputs. The no-send recovery audit nevertheless required the
+collection transaction to have exactly one input.
+
+Yours Wallet spends the sized anchor alone, so that check never fired. Metanet
+Desktop adds its own funding input, which is protocol-irrelevant but produced a
+refused publication reading `collection transaction must spend exactly one
+anchor input`. Nothing was broadcast, because the audit runs before publication.
+
+`src/actions/collectionAnchor.ts` now holds the rule as a pure module: read the
+anchor from input 0, and reject only an unresolvable anchor or one that is not
+the outpoint the signature was made over. `recoverNoSendCollection` accepts the
+expected anchor outpoint from the retained rehearsal, so a wallet that reorders
+inputs and moves the anchor off index 0 is still refused, now with a message
+naming both outpoints. Five regression tests cover the accepted and refused
+shapes. The helper deliberately imports nothing from `@1sat/templates` so it
+runs under Node's test runner, which cannot resolve that package's
+extensionless ESM chain.
 
 ## Admitted transaction coverage
 
@@ -806,6 +878,36 @@ Prepared on 2026-08-02, with nothing deployed:
   boundary LARS enforces. The artifact was inspected and deleted; artifacts and
   shadow reports are ignored by Git.
 
+### Deployed shadow node
+
+The first CARS node was deployed on 2026-08-02 as project
+`93913ed6b421f18f80e669c61239a690` (`adinals-overlay`) at
+
+`https://backend.93913ed6b421f18f80e669c61239a690.projects.babbage.systems`
+
+Release `6cbe8de96aea771de80508ad368f51ae` built and rolled out in about ninety
+seconds. The node reports `status: ok`, registers `tm_adinals` 0.4.0 and
+`ls_adinals` 0.2.0 over HTTPS, and answers a browser CORS preflight for binary
+`/submit` with `access-control-allow-origin: *` plus the required `X-Topics`
+header, so the same-origin proxy that local development needs is unnecessary
+against CARS.
+
+Two operational surprises are worth recording. The cloud rejects any single
+top-up above 10,000 satoshis, and `cars project topup` prints a success message
+regardless of the response body, so a rejected 1,000,000 satoshi payment looks
+identical to a successful one. Verify a top-up by reading the balance back.
+Metered burn is 108 satoshis per five-minute tick, roughly 1,300 per hour or
+31,000 per day, so a 100,000 satoshi balance funds about three days.
+
+The confirmed namespace replay admitted 70 of 71 transactions with zero
+failures. The one skipped transaction was the still-unconfirmed Ad #5, which
+GorillaPool continued to report at `height: null` after the chain had confirmed
+it, so the confirmed-only backfill correctly declined to submit it. Relaying its
+retained 2,329-byte BEEF from the local node closed the gap: the CARS topic
+manager independently returned `outputsToAdmit: [0]` on the evidence alone.
+After that relay the node passed the full shadow round, matching the public
+reader across 5 collections and 20 ads with 20 reconciled current states.
+
 The remaining steps all require explicit operator permission and real funds:
 
 1. Open a BRC-100 wallet first. The CARS CLI authenticates with
@@ -834,6 +936,15 @@ The remaining steps all require explicit operator permission and real funds:
    BEEF to the shadow node. Confirm the hosted node's CORS response and binary
    `/submit` acceptance from the browser before relying on it, exactly as the
    local proxy canary did.
+
+Steps 1 through 4 are complete. The cross-origin browser canary in step 5 also
+passed: a Metanet Desktop collection published from local development delivered
+its BEEF straight to the hosted node with no proxy, and
+`541cbf83d45fb2f33c6fb555ce6cf506d63a1a8063ed7a5b940cf101aa224d86_0` is visible
+there with hydrated BEEF while the local LARS node correctly holds nothing for
+it. `.env.production` is committed with that endpoint so a host without
+dashboard environment variables still builds with overlay delivery enabled;
+`.env` overrides it locally and remains ignored by Git.
 
 GorillaPool stays the authoritative production discovery and fallback path
 throughout. Two build-boundary items to watch on the first cloud build: the

@@ -21,6 +21,7 @@ import {
 } from '../protocol/collectionMetadata.ts'
 import { findUnresolvedBeefDependencies } from '../protocol/beefValidation.ts'
 import { findByteIdenticalOneSatOutputs } from '../protocol/transactionChecks.ts'
+import { collectionAnchorErrors, readCollectionAnchor } from './collectionAnchor.ts'
 import { parseCollectionOutpoint } from './recoveryOutpoint.ts'
 
 export { parseCollectionOutpoint } from './recoveryOutpoint.ts'
@@ -78,6 +79,11 @@ export async function recoverNoSendCollection(
   wallet: RecoveryWallet,
   basket: string,
   requestedOutpoint: string,
+  /**
+   * The anchor outpoint this collection's SIGMA was signed over. When the
+   * caller retains it, input 0 must still spend exactly that outpoint.
+   */
+  expectedAnchorOutpoint = '',
 ): Promise<CollectionRecoveryAudit> {
   const target = parseCollectionOutpoint(requestedOutpoint)
   const [actionResult, outputResult] = await Promise.allSettled([
@@ -146,13 +152,10 @@ export async function recoverNoSendCollection(
     if (identicalOutputIndexes.length !== 1) {
       errors.push(`collection script appears in ${identicalOutputIndexes.length} one-sat outputs`)
     }
-    if (transaction.inputs.length !== 1) errors.push('collection transaction must spend exactly one anchor input')
-    const anchorInput = transaction.inputs[0]
-    const anchorTxid = anchorInput?.sourceTXID ?? anchorInput?.sourceTransaction?.id('hex') ?? ''
-    const anchorVout = anchorInput?.sourceOutputIndex ?? -1
-    if (!/^[0-9a-f]{64}$/i.test(anchorTxid) || anchorVout < 0) {
-      errors.push('collection anchor outpoint is unavailable')
-    }
+    const anchor = readCollectionAnchor(transaction)
+    const anchorTxid = anchor?.txid ?? ''
+    const anchorVout = anchor?.vout ?? -1
+    errors.push(...collectionAnchorErrors(transaction, expectedAnchorOutpoint))
 
     const decodedInscription = Inscription.decode(output.lockingScript)
     const decodedMap = decodeMapSet(output.lockingScript)

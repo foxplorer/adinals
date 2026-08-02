@@ -223,15 +223,33 @@ mints are now confirmed and public, so the confirmed namespace is five
 collections, 20 mints, 38 lifecycle transitions, 12 sibling updates, and eight
 decisions.
 
-A CARS shadow deployment is prepared but not deployed. `deployment-info.json`
-carries an `adinals-shadow` mainnet, backend-only configuration with no project
-identifier, so every release command fails closed;
+A CARS shadow node is now deployed at
+`https://backend.93913ed6b421f18f80e669c61239a690.projects.babbage.systems`.
 `npm run overlay:cars:preflight` verifies offline that the packaged backend has
 no import outside `backend/src` and no undeclared dependency, and
-`npm run overlay:cars:build` writes only a local artifact. A cloud node starts
-with an empty database, so releasing it is not the last step: the confirmed
-namespace must be replayed into it with `overlay:backfill` and then verified
-with the same shadow harness before any production build points at it.
+`npm run overlay:cars:build` writes only a local artifact. Because a cloud node
+starts with an empty database, releasing it was not the last step: the confirmed
+namespace was replayed into it and verified with the same shadow harness the
+local node uses. It matches the public reader across every discovered
+collection and canonical ad, and reconciliation reports no missing confirmed
+spends. GorillaPool remains the production discovery and fallback path.
+
+Reads have not moved. The product still hydrates from GorillaPool and the
+derived public reader; the overlay is a write path plus a background comparison.
+Opening a collection now schedules one shadow read that projects the same
+collection from the overlay and records whether it agrees, without affecting
+anything on screen. Overlay-first hydration and discovery are later stages
+described in [OVERLAY.md](OVERLAY.md); creative images will keep loading from
+public content hosts, with the overlay supplying the hash that makes them
+verifiable.
+
+Browser overlay delivery now targets that node. A Metanet Desktop collection
+published from local development posted its BEEF cross-origin over HTTPS with
+no proxy and reached `indexed`, while the local LARS node correctly holds
+nothing for it. `.env.production` is committed so a static host without
+dashboard environment variables still builds with the endpoint configured; a
+local `.env` overrides it and stays out of Git. Overlay reads remain
+unchanged: the product still reads through the derived public reader.
 
 ## Roadmap
 
@@ -267,6 +285,15 @@ The retained production lifecycle manifest in
 `tests/fixtures/overlay/production-lifecycle-b70c33ad.json` contains public
 outpoints and expected derived state only. It deliberately excludes raw
 transactions, Atomic BEEF, and wallet-local routing data.
+
+Two infrastructure identifiers are committed on purpose: the overlay's HTTPS
+endpoint in `.env.production` and its CARS project identifier in
+`deployment-info.json`. Neither is a credential. Browsers reveal the endpoint
+whenever they deliver a transaction, the overlay is a public read/submit service
+by design, and every administrative CARS operation is authorized by a wallet
+identity rather than by knowing the project's name. Generated server keys, ARC
+credentials, database state under `local-data/`, shadow reports, and every other
+`.env` file stay out of Git.
 
 ## License
 

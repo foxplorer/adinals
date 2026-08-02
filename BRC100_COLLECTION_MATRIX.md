@@ -30,7 +30,7 @@ BRC-99 basket scheme.
 | BRC-100 authentication and network/height | Pass | Pass |
 | Derived collection/owner keys | Pass | Pass |
 | Size-aware SIGMA fee reserve | Pass: 200-sat reserve + observed 23-sat fee for a small mint | Construction pass; current production prompt retest pending |
-| Exact collection output verification | Pass | Pass |
+| Exact collection output verification | Pass | Pass; its extra funding input is accepted after the anchor rule was corrected |
 | Exact mint/update output verification | Pass | Pass |
 | Basket custody and ownership reconstruction | Pass with `p 1sat ordinals` | Pass with negotiated basket |
 | No-send refresh recovery | Pass | Pass |
@@ -70,6 +70,11 @@ change the Adinals transaction or authorization rules.
   became actionable after block confirmation.
 - Creator decision records indexed promptly once their referenced ownership
   transition was derivable.
+- Yours Wallet funds a collection by spending only the sized SIGMA anchor, while
+  Metanet Desktop adds its own funding input after it. Both are protocol-valid:
+  version 3 anchors the signature to the outpoint spent at input 0 and ignores
+  later inputs. A no-send audit that required exactly one input refused Metanet
+  collections until it was narrowed to the anchor position.
 
 Transaction identifiers in this public document are intentionally abbreviated.
 The automated suite uses one already-published mainnet fixture and locally
@@ -119,7 +124,10 @@ that every negative vector is rejected.
 | Confirmed missed-mint backfill | Pass: Ad #4 was admitted as exactly one new transaction after confirmation and exact output 0 is hydrated |
 | Scheduled shadow rounds | Implemented: `overlay:shadow` retains per-round reports, keeps failing transcripts, and exits non-zero; two clean rounds plus a verified failure round |
 | Transition-type admission coverage | Pass on chain for collections, mints, listings, purchases, cancellation, updates, and decisions; plain transfers have unit coverage only, with no live mainnet vector yet |
-| CARS shadow deployment | Prepared, not deployed: `adinals-shadow` config, offline preflight, and a local artifact build pass; no project, funding, or upload exists |
+| CARS shadow deployment | Live: release `6cbe8de9` serves `tm_adinals`/`ls_adinals` over HTTPS, replayed the confirmed namespace, and passes full shadow rounds |
+| Hosted cross-origin browser submission | Pass: a Metanet Desktop collection posted BEEF from Brave to the CARS node with no proxy and reached indexed |
+| In-app overlay shadow read | Implemented and unit tested; compares the overlay against the rendered public reader in the background and never affects the view |
+| Overlay-first reads | Not started: hydration and discovery remain on GorillaPool with the derived reader |
 | Agent SDK/CLI/MCP interface | Not implemented |
 | Publisher moderation/reputation layer | Not implemented |
 

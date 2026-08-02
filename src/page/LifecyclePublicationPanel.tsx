@@ -182,7 +182,7 @@ export function LifecyclePublicationPanel({
           <strong>Publication state: {selection.attempt.outcome}</strong>
           <p>{selection.attempt.message}</p>
           <p>Indexer: {selection.attempt.indexerOutcome}</p>
-          {selection.attempt.overlayStatus && <p>Local overlay: {selection.attempt.overlayStatus}</p>}
+          {selection.attempt.overlayStatus && <p>Overlay: {selection.attempt.overlayStatus}</p>}
           <button type="button" className="ads-back" disabled={Boolean(working)} onClick={() => void reconcile()}>
             {working === 'reconcile' ? 'Reconciling exact txids…' : 'Reconcile wallet + public network'}
           </button>

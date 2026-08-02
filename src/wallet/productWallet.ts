@@ -173,7 +173,12 @@ export async function createCollection(
       cover: collection.cover,
     }, { basket: keys.basket })
     await saveCollectionRehearsal(keys.identityKey, rehearsal)
-    const audit = await recoverNoSendCollection(keys.wallet, keys.basket, rehearsal.outpoint)
+    const audit = await recoverNoSendCollection(
+      keys.wallet,
+      keys.basket,
+      rehearsal.outpoint,
+      rehearsal.anchorOutpoint,
+    )
     if (!audit.candidate?.valid) throw new Error(audit.candidate?.errors.join('; ') || 'Wallet recovery could not verify the collection.')
     const preflight = await readCollectionNetworkPreflight(
       rehearsal.anchorTxid,

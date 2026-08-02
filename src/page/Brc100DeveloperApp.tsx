@@ -500,7 +500,7 @@ function CollectionWorkspace() {
                         </span>
                       ))}
                       <dt>GorillaPool indexing</dt><dd>{publicationAttempt.indexerOutcome}</dd>
-                      {publicationAttempt.overlayStatus && <><dt>Local overlay</dt><dd>{publicationAttempt.overlayStatus}</dd></>}
+                      {publicationAttempt.overlayStatus && <><dt>Overlay</dt><dd>{publicationAttempt.overlayStatus}</dd></>}
                       <dt>Attempt started</dt><dd>{new Date(publicationAttempt.startedAt).toLocaleString()}</dd>
                     </dl>
                     <p>No second publication attempt is available. Reconcile these exact txids through wallet recovery and public readers.</p>

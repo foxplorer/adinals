@@ -136,6 +136,13 @@ if (await exists(path.join(repository, 'backend/dist-test'))) {
   warnings.push('backend/dist-test exists and would be packaged; remove it before `cars build`')
 }
 
+// The CARS CLI writes a stub deployment-info.json into whatever directory it
+// runs from. A second one inside backend/ would ship with the release and
+// describe no services at all.
+if (await exists(path.join(repository, 'backend/deployment-info.json'))) {
+  errors.push('backend/deployment-info.json is a stray CARS stub; delete it before `cars build`')
+}
+
 const projectConfigured = Boolean(cars?.projectID)
 if (!projectConfigured) {
   warnings.push('no CARS projectID is set, so every release command fails closed until an operator runs `cars config edit`')
