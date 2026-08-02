@@ -61,6 +61,11 @@ change the Adinals transaction or authorization rules.
   reserve rather than the former fixed 2,000-satoshi anchor.
 - Exact collection-item records have appeared through GorillaPool while still
   unconfirmed with complete MAP, inscription, and valid SIGMA data.
+- GorillaPool accepted a mint submission and still did not expose the record
+  until the transaction confirmed, so the receipt's `index delayed` state is
+  frequently the expected outcome rather than a failure. The submission retry
+  window is about thirty seconds against a roughly ten-minute block interval.
+  The same mint was queryable on the Adinals overlay immediately, unconfirmed.
 - GorillaPool can return HTTP 200 for an exact listing output while its complete
   transaction/Atomic-BEEF endpoint still returns HTTP 404.
 - A buyer in the same browser can reuse the seller's locally retained verified
