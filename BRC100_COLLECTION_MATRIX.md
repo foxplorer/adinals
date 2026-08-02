@@ -29,6 +29,7 @@ BRC-99 basket scheme.
 | --- | --- | --- |
 | BRC-100 authentication and network/height | Pass | Pass |
 | Derived collection/owner keys | Pass | Pass |
+| `createSignature` honours a supplied hash | Pass in every case, including when `data` accompanies it | Pass alone; **fails** when `data` accompanies it, signing the data instead |
 | Size-aware SIGMA fee reserve | Pass: 200-sat reserve + observed 23-sat fee for a small mint | Construction pass; current production prompt retest pending |
 | Exact collection output verification | Pass | Pass; its extra funding input is accepted after the anchor rule was corrected |
 | Exact mint/update output verification | Pass | Pass |
@@ -85,9 +86,11 @@ change the Adinals transaction or authorization rules.
   published or aborted, while the wallet still counts both in its displayed
   balance. One abandoned collection rehearsal can therefore make most of a
   balance unspendable, which looks like a wallet fault and is not one.
-- `createSignature` treats `data` and `hashToDirectlySign` as alternatives.
-  Yours Wallet honours the supplied hash when both are sent; Metanet Desktop
-  prefers `data` and signs a single SHA-256 of it. A Bitcoin sighash is a double
+- `createSignature` treats `data` and `hashToDirectlySign` as alternatives, and
+  the two wallets resolve the ambiguity differently. Both were measured with the
+  developer panel's conformance check. Yours Wallet honours the supplied hash in
+  every case; Metanet Desktop honours it alone but prefers `data` when both
+  arrive, signing a single SHA-256 of it. A Bitcoin sighash is a double
   SHA-256, so the resulting signature verifies against the wallet's own reported
   key while failing `OP_CHECKSIG`, which reads as a key or wallet fault and is
   neither. Send the sighash alone.
