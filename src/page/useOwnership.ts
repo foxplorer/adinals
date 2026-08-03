@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ADINALS_NAMESPACE } from '../config/environment.ts'
 import { readOwnership } from '../readers/ownershipReader.ts'
+import { readOverlayOwnershipSnapshot } from '../readers/overlayNamespaceClient.ts'
 import type { OwnershipModel } from '../readers/ownershipModel.ts'
 import { useWallet } from '../wallet/WalletContext.tsx'
 
@@ -42,7 +43,13 @@ export function useOwnership(): OwnershipState {
     setLoading(true)
     setError('')
     try {
-      const nextModel = await readOwnership(wallet, { basket })
+      const nextModel = await readOwnership(wallet, {
+        basket,
+        // Public history from the overlay when it holds everything this wallet
+        // owns; the index answers otherwise, and custody always comes from the
+        // wallet itself either way.
+        readOverlaySnapshot: readOverlayOwnershipSnapshot,
+      })
       if (request !== latestRequest.current) return
       setSnapshot({ identityKey, basket, model: nextModel })
     } catch (failure) {

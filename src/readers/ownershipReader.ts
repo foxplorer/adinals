@@ -12,6 +12,7 @@ import {
   type IndexedAdinalsRecord,
 } from './adinalsIndex.ts'
 import { readOwnedCustody, type CustodyWallet } from './ownedCustody.ts'
+import { snapshotCoverage } from './overlayIndexSnapshot.ts'
 import {
   assembleOwnership,
   emptyIndexSnapshot,
@@ -57,6 +58,14 @@ export type OwnershipReadOptions = {
   fetcher?: typeof fetch
   readRawTransaction?: RawTransactionReader
   now?: Date
+  /**
+   * Public history from the overlay instead of the index.
+   *
+   * Returns null when the node cannot answer, and is only used when the
+   * snapshot covers every outpoint the wallet holds; anything less falls back
+   * to the index as a whole rather than leaving a held Adinal with no history.
+   */
+  readOverlaySnapshot?: () => Promise<IndexSnapshot | null>
 }
 
 type OwnershipWallet = CustodyWallet & Partial<Pick<WalletInterface, 'listActions'>>
@@ -111,6 +120,31 @@ export async function readOwnership(
   const collectionOrigins = custody.outputs
     .filter((output) => output.kind === 'collection')
     .map((output) => output.outpoint)
+
+  // The overlay answers the same public half from evidence the application has
+  // already verified, and without a raw-transaction fetch per update. It is
+  // taken only when it covers everything this wallet holds.
+  if (options.readOverlaySnapshot) {
+    const held = custody.outputs
+      .filter((output) => !noSendTxids.has(output.txid))
+      .map((output) => output.outpoint)
+    try {
+      const overlay = await options.readOverlaySnapshot()
+      if (overlay) {
+        const { covered, missing } = snapshotCoverage(overlay, held)
+        if (covered) {
+          const model = assembleOwnership(custody, overlay, options.now)
+          return { ...model, notices: [...model.notices, ...notices] }
+        }
+        notices.push(
+          `The overlay does not yet hold ${missing.length} output(s) this wallet owns,`
+          + ' so ownership history was read from the public index instead.',
+        )
+      }
+    } catch (error) {
+      notices.push(`Overlay ownership history is unavailable: ${errorMessage(error)}`)
+    }
+  }
 
   const lookups = new Set<string>([
     ...collectionOrigins,
