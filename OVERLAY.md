@@ -904,7 +904,7 @@ Read OVERLAY.md, README.md, and BRC100_COLLECTION_MATRIX.md completely first,
 then inspect git status. Preserve existing work and keep all three documents
 current. Do not commit, push, or deploy unless explicitly requested.
 
-Verified state as of 2026-08-02, end of session:
+Verified state as of 2026-08-03, end of session:
 
 - The CARS shadow node is live at
   `https://backend.93913ed6b421f18f80e669c61239a690.projects.babbage.systems`,
@@ -914,12 +914,23 @@ Verified state as of 2026-08-02, end of session:
 - Browser overlay delivery targets that node in development and in production
   builds, through `.env` and the committed `.env.production`. Cross-origin
   binary `/submit` works with no proxy.
-- Reads have not moved. Every rendered value still comes from GorillaPool and
-  the derived reader; the overlay is a write path plus a background comparison.
-- Local LARS still runs on `http://localhost:8080` but has deliberately diverged:
-  it holds only the confirmed backfill and none of the day's live writes.
-- The namespace is now 6 collections, 22 mints, 38 lifecycle transitions, 14
-  updates, and 9 decisions, all matching the public reader.
+- Local LARS runs on `http://localhost:8080` and has deliberately diverged: it
+  holds the confirmed backfill plus whatever was submitted into it during
+  testing. It is a disposable rebuild target, not a mirror.
+- The namespace is 8 collections, 27 ads, 16 updates, and 10 decisions, with the
+  overlay and the public reader reporting identical counts.
+- A connected wallet offers the node the Adinals it holds, automatically once
+  per wallet and endpoint per day and manually from the developer panel. It
+  submits only lineages it can complete and names the missing predecessor
+  otherwise. This is the one ingestion path with no third party in it.
+- `scripts/overlay-cron.sh` runs reconciliation hourly and the confirmed
+  backfill daily under this machine's crontab. Cron only fires while the machine
+  is awake; a systemd timer with `Persistent=true`, or a scheduled GitHub
+  Action, are the options for making it machine-independent.
+- Image creatives are served from overlay evidence before confirmation, proven
+  against a live unconfirmed mint carrying 2,713 bytes of PNG. The creator sees
+  their own bytes at once, replaced by verified bytes when the submission
+  reaches `indexed`.
 - Three Metanet Desktop incompatibilities were found and fixed, none of which
   Yours Wallet would have surfaced: a collection audit that required exactly one
   input, a `createSignature` request that sent `data` alongside
@@ -981,62 +992,47 @@ Verified state as of 2026-08-02, end of session:
   production build all pass.
 - A complete image lifecycle passes on current code: mint, listing, purchase,
   owner update, and creator approval, including 126 KB BEEF submissions.
-- Untested: an overlay-served image creative in a browser, a live wallet
-  submission of a record the overlay actually lacks, proof upgrade for records
-  ingested while unconfirmed, and any image sequence repeated on Yours Wallet
-  with this code.
+- Untested: proof upgrade for records ingested while unconfirmed, any image
+  sequence repeated on Yours Wallet with this code, and every intermediate
+  commit in this session's history — only the final tree was built and tested,
+  so a bisect through it could hit a commit that does not compile.
 
 Implement the next phase:
 
-The direction is to read from the overlay and keep the current reader only as a
-fallback, for the reasons in "Why reads should move to the overlay". Reading is
-now fast enough to render from, so the remaining work is the migration itself,
-in this order.
+Reads have moved. Discovery, every collection and ad view, image creatives, and
+the public half of ownership history all come from the overlay, with the
+existing reader as a whole-namespace fallback. What remains, in the order worth
+taking it:
 
-1. **Finish the view-model mapper.** Done on 2026-08-03.
-   `src/readers/overlayViewModel.ts` derives the full `Collection` and `Ad`
-   shapes from one projection response, including the update timeline with its
-   creator verdicts and the MAP fields. `readOverlayCollectionView` is the entry
-   point and returns null when the node holds nothing, which the caller must
-   treat as unknown rather than empty. `npm run overlay:view-model-diff` matched
-   all 8 hosted collections exactly.
-2. **Render from the overlay with fallback.** Implemented on 2026-08-03 for the
-   collection view, which is where ads are rendered. It reads the projection and
-   falls back to the current reader on an empty result, an error, or a timeout,
-   behind a loading state, chosen per collection rather than per field. The
-   decision, the swap, and the mapper are unit tested, and four collections
-   have rendered from it in a browser at 1,908 to 3,097 milliseconds with the
-   shadow read reporting `match` for each.
-3. **Serve creatives from the same response.** Implemented on 2026-08-03.
-   `src/readers/creativeStore.ts` retains the image bytes that arrived inside
-   the verified evidence and materializes an object URL on first use;
-   `contentSources` in the interface puts that URL ahead of the public content
-   hosts, which remain as fallback. This removes the content host from the
-   render path for any collection read from the overlay, and with it the
-   roughly one-block window in which a new image ad is a 404 to everyone except
-   its author.
-4. **Index the resolver.** Now the load-bearing performance work rather than a
-   nicety: discovery reads every collection on every load, so `findAllRecords`
-   is scanned once per collection per visit.
-   Original note: Replace `findAllRecords` with queries by collection
-   and ad origin, and retain resolved current state alongside the evidence. This
-   changes nothing a reader receives and matters more as the namespace grows
-   than it does at eight collections.
-5. **Simplify the public submission.** Once nothing reads from GorillaPool, the
-   exact-outpoint poll after broadcast has no job and the submission becomes a
-   fire-and-forget txid. This falls out of step two rather than being separate
-   work.
-6. **Upgrade proofs after confirmation.** A record submitted live is stored as
-   unconfirmed BEEF and nothing re-ingests it once its block lands, so the node
-   accumulates evidence proving ancestry but not inclusion. Reconciliation
-   already fetches confirmed proofs, so this is a pass that re-submits
-   proof-anchored BEEF for records held unconfirmed.
-7. **Federate.** Discovery is the last dependency fallback cannot cover: an
-   Adinal sold outside this application reaches the node only through
-   reconciliation against GorillaPool. SHIP, SLAP, and GASP remove that, and
-   need a second node running `tm_adinals`. Wallet repair, added on 2026-08-03,
-   narrows the gap without closing it: it covers records the connected wallet
-   holds, and nothing owned by someone who never opens the application.
+1. **Third-party reads.** Embeds, the derived JSON reader, and agents still
+   fetch content hosts, so the one-block image window persists for everyone who
+   is not using the application. This is now the largest gap between what the
+   overlay can do and what people experience, and it is a change to the embed
+   and the reader rather than to the protocol.
+2. **The write path.** Broadcast still submits to GorillaPool and polls the
+   exact outpoint. That poll existed to tell the interface when a record became
+   visible to the path it read from; now that reads have moved, it can become a
+   fire-and-forget txid.
+3. **Resolver indexing.** `findAllRecords` is scanned once per collection per
+   visit, which is load-bearing now that discovery reads every collection.
+   Replace it with queries by collection and ad origin, and retain resolved
+   current state alongside the evidence. This changes nothing a reader receives.
+4. **Proof upgrade.** Records ingested while unconfirmed hold proof-less BEEF,
+   so the node proves ancestry and signatures but not inclusion for its newest
+   records. Until this lands, "verified" is the accurate word rather than
+   "SPV-complete". Reconciliation already fetches confirmed proofs, so this is a
+   pass that re-submits proof-anchored BEEF for records held unconfirmed.
+5. **Federation.** The only thing that removes GorillaPool from discovery of
+   records nobody submitted. SHIP, SLAP, and GASP need a second node running
+   `tm_adinals`. Wallet repair narrows this without closing it: it covers what a
+   connected wallet holds, and nothing owned by someone who never opens the
+   application.
+
+Two additions are worth considering alongside those, both node-side work against
+fields already on chain rather than protocol changes: `collectionsByCreator` and
+a placement index, which would let another application scope the overlay to its
+own collections without reading the namespace. See "Using this overlay for other
+applications".
 
 Alongside those: keep scheduled `npm run overlay:shadow` rounds against the CARS
 endpoint and retain divergence reports; watch the CARS balance, since top-ups

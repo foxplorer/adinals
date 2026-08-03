@@ -176,19 +176,24 @@ for the current beta.
 
 ## Next implementation order
 
-1. Complete live restart recovery in Yours and Metanet, one image lifecycle,
-   and an emergency-switch preview drill.
-2. Tag the current frontend/reference verifier as `v0.1.0-beta`.
-3. Keep the scheduled `overlay:shadow` rounds running locally and retain every
-   divergence report; the live wallet-to-LARS canary, namespace parity, and
-   confirmed reconciliation have already passed.
-4. With a running Metanet Desktop wallet, create and fund a CARS mainnet
-   project, set its identifier on the prepared `adinals-shadow` configuration,
-   release the backend, replay the confirmed namespace into the new node, and
-   require repeated clean remote shadow runs before moving the reader behind
-   `api.adinals.com`.
-5. Publish a read-only agent package, followed by wallet-injected write actions.
-6. Add publisher moderation/reputation tools before promoting unrestricted
+1. Move third-party reads onto the overlay: the embed component and the derived
+   JSON reader still fetch content hosts, so the one-block image window persists
+   for everyone not using the application. This is the largest remaining gap
+   between what the node can prove and what people see.
+2. Simplify the write path. Broadcast still submits to GorillaPool and polls the
+   exact outpoint; that poll told the interface when a record became visible to
+   the path it read from, and reads have moved.
+3. Index the lookup resolver. `findAllRecords` is scanned once per collection
+   per visit now that discovery reads every collection.
+4. Upgrade proofs after confirmation, so the node proves inclusion and not only
+   ancestry for its newest records.
+5. Federate with SHIP, SLAP, and GASP once a second node runs `tm_adinals`; this
+   is the only thing that removes GorillaPool from discovery.
+6. Complete live restart recovery in Yours and Metanet and an emergency-switch
+   preview drill, then tag the reference application as `v0.1.0-beta`.
+7. Publish a read-only agent package against a stable `api.adinals.com` origin,
+   followed by wallet-injected write actions.
+8. Add publisher moderation/reputation tools before promoting unrestricted
    collection discovery as trusted advertising inventory.
 
 Use the canonical [overlay continuation handoff](OVERLAY.md#continuation-handoff)
