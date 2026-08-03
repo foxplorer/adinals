@@ -51,7 +51,10 @@ import { runOverlayShadowRead } from '../readers/overlayShadowReadClient.ts'
 import { runOverlayCollectionRead } from '../readers/overlayCollectionReadClient.ts'
 import { overlayCreativeUrl } from '../readers/creativeStore.ts'
 import { repairOverlayFromBasketsOnce } from '../overlay/basketRepairClient.ts'
-import { runOverlayNamespaceRead } from '../readers/overlayNamespaceClient.ts'
+import {
+  forgetOverlayNamespace,
+  runOverlayNamespaceRead,
+} from '../readers/overlayNamespaceClient.ts'
 import type { OverlayCollectionReadStatus } from '../readers/overlayCollectionRead.ts'
 import type {
   OverlaySubmission,
@@ -252,12 +255,17 @@ function InscriptionImage({
   const [retryCount, setRetryCount] = useState(0)
   const [localSrc, setLocalSrc] = useState('')
   const [remoteReady, setRemoteReady] = useState(false)
+  // Overlay evidence usually arrives after the first render, and a content host
+  // returns 404 for an unconfirmed inscription. Without this, an image that
+  // failed over the public hosts would keep showing its fallback until the
+  // thirty-second retry, despite holding proven bytes the whole time.
+  const provenSource = overlayCreativeUrl(outpoint)
   useEffect(() => {
     setFailed(false)
     setSourceIndex(0)
     setRetryCount(0)
     setRemoteReady(false)
-  }, [outpoint])
+  }, [outpoint, provenSource])
   useEffect(() => {
     if (!localImage) {
       setLocalSrc('')
@@ -950,6 +958,10 @@ export function AdLab() {
    */
   const load = useCallback(async () => {
     setLoading(true)
+    // Retained evidence exists to deduplicate reads within one interaction. A
+    // load is the interaction that follows a publication, so reusing evidence
+    // read before it would hide the record that was just created.
+    forgetOverlayNamespace()
     try {
       // Discovery first. One projection per collection is the same evidence the
       // detail view renders from, so a namespace that resolves completely
@@ -1332,10 +1344,14 @@ export function AdLab() {
         }))
         return changed ? next : current
       })
+      // Indexed means the node holds this record's evidence, creative bytes
+      // included. Re-reading now is what turns a creator's local preview into
+      // an image every visitor can see, a block ahead of the content hosts.
+      if (record.status === 'indexed') void load()
     }
     window.addEventListener('adinals-overlay-status', onOverlayStatus)
     return () => window.removeEventListener('adinals-overlay-status', onOverlayStatus)
-  }, [])
+  }, [load])
   useEffect(() => {
     const timer = window.setInterval(() => {
       setCollections((current) =>
@@ -2833,6 +2849,15 @@ export function AdLab() {
                           indexPending: false,
                         },
                       ])
+                      if (collection.format === 'image' && mintImage) {
+                        // The creator already holds the exact bytes they
+                        // inscribed, so their own view never waits on a read.
+                        // The overlay replaces this with proven bytes below.
+                        setLocalImagePreviews((current) => ({
+                          ...current,
+                          [outpoint]: mintImage,
+                        }))
+                      }
                       setMintText('')
                       setMintUrl('')
                       setMintImage(null)
