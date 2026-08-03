@@ -28,6 +28,10 @@ import {
   type NoSendActionSummary,
 } from '../wallet/noSendMaintenance.ts'
 import {
+  repairOverlayFromBaskets,
+  type BasketRepairResult,
+} from '../overlay/basketRepairClient.ts'
+import {
   readSigningConformance,
   summarizeSigningConformance,
   type SigningConformance,
@@ -172,6 +176,9 @@ function CollectionWorkspace() {
   const [noSendBusy, setNoSendBusy] = useState(false)
   const [noSendNote, setNoSendNote] = useState('')
   const [noSendUnderstood, setNoSendUnderstood] = useState(false)
+  const [basketRepair, setBasketRepair] = useState<BasketRepairResult | null>(null)
+  const [basketRepairBusy, setBasketRepairBusy] = useState(false)
+  const [basketRepairNote, setBasketRepairNote] = useState('')
   const [signing, setSigning] = useState<SigningConformance | null>(null)
   const [signingBusy, setSigningBusy] = useState(false)
   const [signingNote, setSigningNote] = useState('')
@@ -227,6 +234,35 @@ function CollectionWorkspace() {
       )
     } finally {
       setNoSendBusy(false)
+    }
+  }
+
+  /**
+   * Offers the Adinals this wallet holds to the overlay.
+   *
+   * Inspecting asks the node which of them it already has; submitting sends the
+   * wallet's own BEEF for the ones it does not. Nothing here creates, signs, or
+   * broadcasts a transaction: every record involved is already on chain, and the
+   * only new thing is that this node learns about it.
+   */
+  const runBasketRepair = async (submit: boolean) => {
+    if (!wallet) return
+    setBasketRepairBusy(true)
+    setBasketRepairNote('')
+    try {
+      const summary = await repairOverlayFromBaskets(wallet, { submit })
+      setBasketRepair(summary)
+      // Both notes describe the state the run left behind, so a second click is
+      // never invited for work that already succeeded.
+      setBasketRepairNote(submit
+        ? `Submitted ${summary.submitted} transaction(s); ${summary.failures.length} refused. `
+          + `${summary.present} of ${summary.outputs} now held, ${summary.incomplete} still missing history.`
+        : `${summary.outputs} basket output(s): ${summary.present} already held, ${summary.submittable} submittable, ${summary.incomplete} missing history.`)
+    } catch (repairError) {
+      setBasketRepair(null)
+      setBasketRepairNote(repairError instanceof Error ? repairError.message : String(repairError))
+    } finally {
+      setBasketRepairBusy(false)
     }
   }
 
@@ -571,6 +607,89 @@ function CollectionWorkspace() {
         )}
         {signing?.errors.map((entry) => <p key={entry} role="alert">{entry}</p>)}
         {signingNote && <p role="status">{signingNote}</p>}
+      </section>
+      <section className="collection-recovery" aria-label="Overlay repair from wallet baskets">
+        <div>
+          <span className="phase-badge">Overlay ingestion</span>
+          <h3>Teach the overlay what this wallet holds</h3>
+          <p>
+            The node learns about a record when this application submits it, when reconciliation finds it through
+            GorillaPool, or when a peer synchronises it. A connected wallet is a fourth source and the only one that
+            involves no third party: the evidence is the BEEF the wallet already holds for its own outputs. An Adinal
+            minted in another session, imported, or bought elsewhere can reach the node on the strength of its own
+            transaction.
+          </p>
+          <p>
+            History is what limits it. A collection and a mint admit on their own evidence, but a later state only
+            admits if the overlay already holds the output it spent, and a wallet&rsquo;s BEEF is pruned at whatever
+            ancestors carry merkle proofs. Anything whose lineage this wallet cannot complete is reported rather than
+            sent, and belongs to the confirmed GorillaPool backfill instead.
+          </p>
+          <p>
+            Inspecting is read-only. Submitting sends transactions that are already public on chain to the configured
+            overlay; it creates nothing, signs nothing, and broadcasts nothing.
+          </p>
+        </div>
+        <div className="adlab-wallet-actions">
+          <button
+            type="button"
+            className="ads-back"
+            disabled={!wallet || basketRepairBusy}
+            onClick={() => void runBasketRepair(false)}
+          >
+            {basketRepairBusy ? 'Reading baskets…' : 'Inspect wallet baskets'}
+          </button>
+          <button
+            type="button"
+            className="ads-back adlab-primary"
+            disabled={!wallet || basketRepairBusy || !basketRepair?.submittable}
+            onClick={() => void runBasketRepair(true)}
+          >
+            {basketRepair?.submittable
+              ? `Submit ${basketRepair.transactions} transaction(s) to the overlay`
+              : 'Nothing to submit'}
+          </button>
+        </div>
+        {basketRepair && (
+          <>
+            <p>
+              <code>{basketRepair.basket || 'no basket answered'}</code> · {basketRepair.outputs} output(s) ·{' '}
+              {basketRepair.present} already held · {basketRepair.submittable} submittable ·{' '}
+              {basketRepair.incomplete} missing history · {basketRepair.skipped} not Adinals
+            </p>
+            {basketRepair.plans.filter((plan) => plan.decision !== 'skipped').length > 0 && (
+              <ul className="retained-rehearsals">
+                {basketRepair.plans.filter((plan) => plan.decision !== 'skipped').map((plan) => (
+                  <li key={plan.outpoint}>
+                    <code>{shortKey(plan.outpoint)}</code>
+                    <span>{plan.decision}</span>
+                    <span>{plan.missing ? `needs ${shortKey(plan.missing)}` : plan.note}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {basketRepair.failures.length > 0 && (
+              <ul className="retained-rehearsals">
+                {basketRepair.failures.map((failure) => (
+                  <li key={failure.outpoint}>
+                    <code>{shortKey(failure.outpoint)}</code>
+                    <span>refused</span>
+                    <span>{failure.error}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {basketRepair.unread.length > 0 && (
+              <p>
+                Not read:{' '}
+                {basketRepair.unread.map((entry) => `${entry.basket} (${entry.error})`).join(', ')}.
+                Production negotiates the BRC-99 basket name first and falls back to the portable one, so a wallet
+                that does not implement that scheme refuses one of the two by design.
+              </p>
+            )}
+          </>
+        )}
+        {basketRepairNote && <p role="status">{basketRepairNote}</p>}
       </section>
       <section className="collection-recovery" aria-label="Wallet no-send maintenance">
         <div>
