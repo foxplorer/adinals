@@ -338,6 +338,25 @@ function InscriptionImage({
   )
 }
 
+/**
+ * Shown at the top of a tab while its records are read and verified.
+ *
+ * Reading the namespace from the overlay takes seconds and every record is
+ * checked in the browser before it is displayed, so the wait is real work
+ * rather than a stall. It sits above the content rather than replacing it, so
+ * a tab that already has something to show keeps showing it.
+ */
+function TabLoader({ label }: { label: string }) {
+  return (
+    <div className="adlab-tab-loader" role="status" aria-live="polite">
+      <span className="adlab-tab-loader-dots" aria-hidden="true">
+        <i /><i /><i />
+      </span>
+      <small>{label}</small>
+    </div>
+  )
+}
+
 function CreativePreview({
   format,
   text,
@@ -1955,7 +1974,9 @@ export function AdLab() {
                 <span className="adlab-kicker">Creator inbox</span>
                 <h2>Pending approvals</h2>
                 <p>
-                  {pendingApprovals.length
+                  {loading
+                    ? 'Reading records.'
+                    : pendingApprovals.length
                     ? `${pendingApprovals.length} owner update${pendingApprovals.length === 1 ? '' : 's'} waiting for your decision.`
                     : 'No currently verifiable updates need review. Update records can index immediately, but an update after a recent purchase cannot appear here until GorillaPool also returns the buyer’s spend chain and owner epoch; refresh after the next block.'}
                 </p>
@@ -1965,7 +1986,9 @@ export function AdLab() {
               </span>
             </div>
 
-            {pendingApprovals.length > 0 && (
+            {loading && <TabLoader label="Reading updates awaiting your review…" />}
+
+            {!loading && pendingApprovals.length > 0 && (
               <div className="adlab-approval-list">
                 {pendingApprovals.map(({ collection: pendingCollection, ad, update }) => (
                   <article className="adlab-approval-card" key={update.outpoint}>
@@ -2154,6 +2177,8 @@ export function AdLab() {
                   )
                 })}
               </div>
+            ) : loading ? (
+              <TabLoader label="Reading the Adinals this wallet owns…" />
             ) : (
               <div className="adlab-empty">
                 <strong>You do not own any active ad slots</strong>
@@ -2191,7 +2216,7 @@ export function AdLab() {
             </div>
             <div className="adlab-head-actions">
               <button type="button" className="ads-back adlab-action-button" disabled={loading} onClick={() => void load()}>
-                {loading ? 'Reading chain…' : '↻ Refresh collections'}
+                {loading ? 'Reading records…' : '↻ Refresh collections'}
               </button>
               {keys && (
                 <button type="button" className="ads-back adlab-primary adlab-action-button" onClick={() => setShowCreateCollection((open) => !open)}>
@@ -2336,6 +2361,8 @@ export function AdLab() {
                 )
               })}
             </div>
+          ) : loading ? (
+            <TabLoader label="Reading collections…" />
           ) : (
             <div className="adlab-empty">
               <strong>
@@ -2586,7 +2613,7 @@ export function AdLab() {
                 disabled={loading}
                 onClick={() => void load()}
               >
-                {loading ? 'Reading chain…' : '↻ Refresh collection'}
+                {loading ? 'Reading records…' : '↻ Refresh collection'}
               </button>
               {keys && (
                 <button
