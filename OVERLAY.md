@@ -337,6 +337,7 @@ npm run overlay:backfill -- --dry-run
 npm run overlay:backfill
 npm run overlay:smoke
 npm run overlay:parity
+npm run overlay:view-model-diff
 npm run overlay:reconcile
 npm run overlay:shadow -- --rounds=4 --interval=900
 npm run overlay:cars:preflight
@@ -344,7 +345,8 @@ npm run overlay:cars:config
 npm run overlay:cars:build
 ```
 
-`overlay:shadow`, `overlay:parity`, and `overlay:reconcile` all honor
+`overlay:shadow`, `overlay:parity`, `overlay:view-model-diff`, and
+`overlay:reconcile` all honor
 `ADINALS_OVERLAY_URL`, so the same commands verify a remote shadow node once one
 exists. `overlay:cars:preflight` and `overlay:cars:config` are offline;
 `overlay:cars:build` only writes a local artifact file. None of them contacts a
@@ -429,16 +431,23 @@ Content-Type: application/json
 ```
 
 The generic path and envelope are provided by OverlayExpress. Adinals defines
-and versions the query object. Initial query types are:
+and versions the query object. The deployed service implements:
 
+- `status`;
+- `output` by exact outpoint;
 - `collection` by immutable origin;
-- `collectionLive` by immutable origin;
-- `ad` by immutable origin;
 - `collections` with deterministic pagination;
-- `collectionsByCreator`;
-- `adsByOwner`;
-- `pendingDecisions` by creator; and
-- `history` by immutable ad origin.
+- `adsByCollection` by collection origin;
+- `ad` by immutable origin;
+- `history` by immutable ad origin;
+- `adCurrent` by immutable ad origin;
+- `collectionLive` by immutable origin;
+- `collectionProjection` by immutable origin; and
+- `pendingDecisions` by creator.
+
+`collectionsByCreator` and `adsByOwner` were listed here before they existed and
+are **not** implemented. They are the natural next additions, and both are
+node-side work against fields already on chain rather than protocol changes.
 
 Health and service discovery are available at `/health/live`, `/health/ready`,
 `/health`, `/listTopicManagers`, and `/listLookupServiceProviders`.
@@ -546,14 +555,138 @@ not automatically learn every external 1Sat Market spend.
 The beta therefore uses three paths:
 
 1. **Immediate:** every Adinals action posts its verified BEEF to `/submit`.
-2. **Reconciliation:** periodically follow known outpoint spends through
+2. **Wallet repair:** a connected wallet offers the overlay the BEEF it already
+   holds for its own baskets, which needs no third party at all. This runs
+   automatically for every visitor, once per wallet and endpoint per day.
+3. **Reconciliation:** periodically follow known outpoint spends through
    GorillaPool and independently verify raw transactions before ingestion.
-3. **Federation later:** use SHIP/SLAP discovery and GASP synchronization after
+4. **Federation later:** use SHIP/SLAP discovery and GASP synchronization after
    another node supports `tm_adinals` and `ls_adinals`.
 
 Missing or contradictory evidence produces a provisional/degraded response,
 never an invented owner or creative. The overlay must be rebuildable from
 public confirmed transactions.
+
+### Repair from a connected wallet
+
+A node learns about a record when this application submits it, when
+reconciliation finds it through GorillaPool, or when a peer synchronises it. A
+connected wallet is a fourth source, and the only one that involves no third
+party at all: the evidence is the BEEF the wallet already holds for its own
+outputs. An Adinal minted in another session, imported, or bought elsewhere can
+therefore reach the node on the strength of its own transaction.
+
+`src/overlay/basketRepair.ts` decides and `src/overlay/basketRepairClient.ts`
+performs. Every Adinals basket is listed with `include: 'entire transactions'`,
+each output is walked back through the transactions its BEEF actually carries,
+and the node is asked which of those outpoints it already holds. The plan is one
+of four outcomes: `present`, `submit` with an ordered transaction list,
+`history-incomplete` naming the exact predecessor the wallet cannot prove, or
+`skipped`.
+
+History is the limit rather than authority. A collection and a mint are
+self-contained and admit on their own evidence, but a later state admits only if
+the overlay already holds the output it spent, and a wallet's BEEF is pruned at
+whatever ancestors carry merkle proofs. Measured on production records: a
+collection record walks to one self-contained step and submits; a current state
+several spends past its mint arrives as a single transaction whose predecessor
+is absent, is reported as `history-incomplete`, and becomes submittable the
+moment the overlay holds that predecessor. Anything incomplete belongs to the
+confirmed backfill below, which reads GorillaPool precisely because the wallet
+cannot reach that far back.
+
+The developer panel exposes it as an inspect control and a separate submit
+control. Nothing in the path creates, signs, or broadcasts a transaction: every
+record involved is already public on chain, and the only new thing is that this
+node learns of it.
+
+It also runs for ordinary visitors. `repairOverlayFromBasketsOnce` fires in the
+background after a wallet connects, submits without asking, and is silent unless
+it did something. Three properties keep that defensible. The records are already
+public and the application already delivers exactly this evidence for every
+action it performs, so submission is not new exposure. The wallet-connect copy
+says plainly that it happens, so it is disclosed rather than hidden. And it runs
+at most once per day per wallet *and* endpoint, marked before the run rather
+than after, so a slow or failing node cannot make every page load repeat a check
+that costs a round trip per basket output. A different endpoint is asked
+immediately rather than waiting out a timer set against the previous one, since
+a different node knows a different set of records.
+
+The membership check is the part that reveals something new: asking `hasOutput`
+for every basket outpoint tells the node's operator that one session holds that
+particular set. Each record is public individually; the correlation is not. That
+is acceptable while the node and the application share an operator, and is worth
+revisiting before recommending this pattern against a node someone else runs.
+
+The wallet half is proven. On 2026-08-03 a connected production wallet returned
+21 basket outputs, every one of which the lineage walk classified as an Adinals
+record with nothing skipped, including the sibling `adUpdate` records at output
+index 1. All 21 were already held by the hosted node, which is the healthy
+result: this wallet's records had all reached it through the ordinary write
+path, so there was nothing to repair.
+
+That run also showed the expected basket negotiation. Production asks for the
+BRC-99 `p 1sat ordinals` basket first and falls back to the portable `adinals`
+name, so a wallet that does not implement the scheme refuses one of the two by
+design, answering `Unsupported P-module scheme: p 1sat`. A refused basket is
+recorded as unread with the wallet's own reason, separately from any submission
+failure, and the summary names only the baskets that actually answered.
+
+The submission half is proven on 2026-08-03 against the local node, which held
+the 2026-08-01 confirmed backfill and none of the later live writes. Two collections that existed only on
+the hosted node were inspected as submittable, submitted from BEEF alone, and
+found present on re-inspection, with the local node then answering collection
+lookups for both. A duplicate submission of an already-held record returns
+`outputsToAdmit: []` and is treated as present rather than as a failure.
+
+The two halves met on 2026-08-03 with the application pointed at the local node.
+A production wallet's 21 basket outputs resolved to 8 already held, 5
+submittable, and 8 with pruned lineages naming the exact predecessors they
+needed. Submitting sent all five, which the node's own request log confirms as
+five browser submissions roughly 380 milliseconds apart; a later inspection
+found 13 held and the same 8 incomplete, unchanged across a restart. The eight
+incomplete are ads that have changed hands, whose history the wallet cannot
+reach and the confirmed backfill can.
+
+That run exposed a reporting defect rather than a mechanical one. The summary
+returned after a submission described the state the run *found* rather than the
+state it *left*, so five successful submissions still displayed as five
+submittable and the control still invited them to be sent again. Clicking it a
+second time recomputed correctly, reported nothing to submit, and overwrote the
+evidence that the first click had worked. Plans are now recomputed against
+everything known after the submission pass. Verified against the local node with
+a collection it was missing three records of: inspection reported 27 held and 3
+submittable, submitting reported 3 sent with 30 held and 0 submittable, and
+re-inspection agreed.
+
+One serialization caution learned there: BEEF merged transaction by transaction
+loses the merkle proofs the topic manager needs, and the submission is refused
+for a missing source transaction. A wallet's BEEF is used whole and unmodified,
+which is what keeps its proofs intact.
+
+### Scheduled maintenance
+
+A wallet can only offer what it holds and can prove. Everything else — an Adinal
+sold outside this application, and every lineage a wallet's BEEF has pruned —
+reaches the node through work that needs no visitor at all.
+`scripts/overlay-cron.sh` runs `overlay:reconcile`, `overlay:backfill`, or
+`overlay:shadow` under cron, and was installed on 2026-08-03 as hourly
+reconciliation and a daily backfill against the hosted node.
+
+cron gives a task almost no environment, which is where such jobs usually fail
+silently. The script locates the newest nvm runtime unconditionally and refuses
+to run below Node 22, because the distribution node on this machine reaches Vite
+and dies on syntax it does not know, in a way that reads as a broken repository.
+It derives the repository root from its own path rather than the caller's
+working directory, checks `/health` before spending a run on an unreachable
+node, and holds a per-mode lock so a slow run is skipped rather than queued
+behind itself. Each run appends one timestamped log under
+`reports/overlay-cron/`; clean logs are pruned after a week and failures are
+kept. Report files stay out of Git.
+
+The first bare-environment run proved the point immediately: it checked 54
+current states and submitted one confirmed external spend the hosted node was
+missing.
 
 ### Historical backfill
 
@@ -582,6 +715,79 @@ without submitting anything. Add `--collection=<immutable_outpoint>` to scope
 either a dry run or replay to one collection. The non-dry command is idempotent:
 it polls exact output lookup after each STEAK response before submitting a
 dependent spend.
+
+### Ownership history from the overlay
+
+The ownership model always took custody from the wallet, which needs no third
+party. What it still asked GorillaPool for was the public half: the record
+behind each held outpoint, each collection's updates and decisions, every ad's
+spend chain, and a raw-transaction proof per update.
+`src/readers/overlayIndexSnapshot.ts` builds the same snapshot from the
+projections the application already reads, so the index answers none of it.
+
+Two conversions are worth naming. The overlay states which output a record
+spent, while the index states which transaction spent it, so the snapshot
+reverses the link. And every state on an ad's chain is stored under that ad's
+immutable origin, which is how a held output joins back to the record it belongs
+to.
+
+The update proofs are the largest saving: the reference path fetches two raw
+transactions per update and spends almost all of its time there, measured at
+11,180 milliseconds of a 12,021 millisecond namespace read.
+
+The rendered model and the ownership index are two shapes of one answer, so the
+evidence behind them is read once and derived twice. Reading it twice doubled
+the slowest part of a page load to produce the same bytes; with the read shared,
+building the ownership snapshot after a namespace read costs a millisecond.
+Retention is fifteen seconds and exists to deduplicate within one page
+interaction rather than to be a cache with its own staleness rules.
+
+Namespace timings vary with the node's load and should be read as a range rather
+than a figure: four consecutive reads measured 6,306, 4,901, 5,396, and 5,849
+milliseconds, with one outlier at 14,341 while the node was busy. The hosted
+node answers `/health` in about 740 milliseconds, so a single round trip is a
+meaningful share of any of those.
+
+Coverage decides whether the snapshot may be used at all. A held outpoint the
+overlay never ingested would render as an Adinal with no public history, which
+looks like a broken record rather than an incomplete index, so a snapshot that
+does not cover every custody outpoint is discarded whole and the index answers
+instead, with a notice saying how many outputs were missing.
+
+## Using this overlay for other applications
+
+The namespace read exists because the product is an explorer for every
+collection. Nothing else needs it. An application that cares about one
+collection — a game reading traits its players control, an agent reading one
+placement — calls `collectionProjection` with that origin and gets the whole
+thing in one request, measured between 357 and 2,236 milliseconds against the
+hosted node. It never lists the namespace and its cost does not grow as other
+people mint.
+
+So "fetch everything" is a property of this interface rather than of the
+overlay, and three cheaper scopes already exist or are close:
+
+- **One known collection:** `collectionProjection` today. No change required.
+- **One creator's collections:** needs `collectionsByCreator`. The signer is
+  already resolved and stored per record, so this is an index and a query
+  branch, not a protocol change.
+- **One purpose or placement:** version 3 records already carry `adPlacement`,
+  written by the creator and currently used only for display. A
+  `collectionsByPlacement` query would let an application claim a label without
+  a new record version.
+
+Two heavier options are worth naming so they are not reached for by reflex.
+Separate topic managers (`tm_adinals_npc`) partition storage properly but
+fragment the protocol, need a node release per application, and make
+cross-application queries impossible. A new protocol version with an explicit
+application field partitions hardest of all and invalidates nothing already
+minted, but costs a version. Neither is justified while a label field and an
+index would do.
+
+The other thing multiple applications imply is that they should not depend on
+this repository's interface code. A read-only package around the overlay client,
+the view model, and the validators is the shared surface; the explorer is one
+consumer of it and a game would be another.
 
 ## Parity gates
 
@@ -688,8 +894,24 @@ Verified state as of 2026-08-02, end of session:
 - The interface's view model is extracted to `src/readers/collectionViewModel.ts`
   so a reader can produce it directly, and market history is derived from the
   ownership chain in `src/readers/overlayMarketEvents.ts`.
-- Nothing renders from the overlay yet. The application is stable and every
-  displayed value still comes from GorillaPool and the derived reader.
+- The mapper is finished as of 2026-08-03.
+  `src/readers/overlayViewModel.ts` turns one projection response into the
+  application's own `Collection` and `Ad` shapes, and
+  `readOverlayCollectionView` is its entry point. The GorillaPool path now calls
+  the same shared collection and display helpers rather than its own copies, so
+  the two readers share one model. `npm run overlay:view-model-diff` matched all
+  8 hosted collections, 26 ads, 16 updates, and 32 market events exactly.
+- The whole read path renders from the overlay as of 2026-08-03: discovery, the
+  collection list, every collection view, and image creatives. GorillaPool is
+  reached only when the overlay answers incompletely, and the application falls
+  back as a whole namespace rather than per collection. Write paths are
+  unchanged and still submit to both.
+- Measured on the hosted node: the overlay assembles the namespace in 5,849 ms
+  against 12,021 ms for the GorillaPool path producing the same model, with
+  identical counts of 8 collections, 27 ads, and 16 updates.
+- Proven in a browser on 2026-08-03: four collections rendered from the overlay
+  at 1,908 to 3,097 milliseconds, and the retained stage-one shadow read
+  reported `match` for each of them against the derived public reader.
 - Two limitations qualify what the node can currently prove, and both are
   addressed by steps in the next phase rather than by anything already done.
   Records submitted live are stored as unconfirmed BEEF and nothing re-ingests
@@ -699,12 +921,14 @@ Verified state as of 2026-08-02, end of session:
   through reconciliation. The node is therefore a verified store with a trusted
   discovery feed rather than an independent one, and any claim made for it
   should say so.
-- 186 application tests, 36 backend tests, typecheck, script self-test, and the
+- 258 application tests, 36 backend tests, typecheck, script self-test, and the
   production build all pass.
 - A complete image lifecycle passes on current code: mint, listing, purchase,
   owner update, and creator approval, including 126 KB BEEF submissions.
-- Untested: overlay-first reads, proof upgrade for records ingested while
-  unconfirmed, and any image sequence repeated on Yours Wallet with this code.
+- Untested: an overlay-served image creative in a browser, a live wallet
+  submission of a record the overlay actually lacks, proof upgrade for records
+  ingested while unconfirmed, and any image sequence repeated on Yours Wallet
+  with this code.
 
 Implement the next phase:
 
@@ -713,22 +937,32 @@ fallback, for the reasons in "Why reads should move to the overlay". Reading is
 now fast enough to render from, so the remaining work is the migration itself,
 in this order.
 
-1. **Finish the view-model mapper.** Market events and the ownership chain are
-   done. What remains is the update timeline with its creator verdicts, which
-   needs the same epoch and approval logic the projection already applies
-   internally, and the fields carried in MAP: name, mint text, mint link, and
-   timestamp. No further requests are required, and none of this is deployed
-   code, so it carries no release risk.
-2. **Render from the overlay with fallback.** Collection and ad views read the
-   projection and fall back to the current reader on an empty result, an error,
-   or a timeout, behind a loading state. Fallback is chosen per collection
-   rather than per field: a view should always be attributable to one source,
-   because a mixed view makes a divergence nearly impossible to diagnose. This
-   is the first change a visitor would notice.
-3. **Serve creatives from the same response.** Removes the one-block window in
-   which a new image ad is invisible to embeds and agents, and removes the
-   content host from the render path.
-4. **Index the resolver.** Replace `findAllRecords` with queries by collection
+1. **Finish the view-model mapper.** Done on 2026-08-03.
+   `src/readers/overlayViewModel.ts` derives the full `Collection` and `Ad`
+   shapes from one projection response, including the update timeline with its
+   creator verdicts and the MAP fields. `readOverlayCollectionView` is the entry
+   point and returns null when the node holds nothing, which the caller must
+   treat as unknown rather than empty. `npm run overlay:view-model-diff` matched
+   all 8 hosted collections exactly.
+2. **Render from the overlay with fallback.** Implemented on 2026-08-03 for the
+   collection view, which is where ads are rendered. It reads the projection and
+   falls back to the current reader on an empty result, an error, or a timeout,
+   behind a loading state, chosen per collection rather than per field. The
+   decision, the swap, and the mapper are unit tested, and four collections
+   have rendered from it in a browser at 1,908 to 3,097 milliseconds with the
+   shadow read reporting `match` for each.
+3. **Serve creatives from the same response.** Implemented on 2026-08-03.
+   `src/readers/creativeStore.ts` retains the image bytes that arrived inside
+   the verified evidence and materializes an object URL on first use;
+   `contentSources` in the interface puts that URL ahead of the public content
+   hosts, which remain as fallback. This removes the content host from the
+   render path for any collection read from the overlay, and with it the
+   roughly one-block window in which a new image ad is a 404 to everyone except
+   its author.
+4. **Index the resolver.** Now the load-bearing performance work rather than a
+   nicety: discovery reads every collection on every load, so `findAllRecords`
+   is scanned once per collection per visit.
+   Original note: Replace `findAllRecords` with queries by collection
    and ad origin, and retain resolved current state alongside the evidence. This
    changes nothing a reader receives and matters more as the namespace grows
    than it does at eight collections.
@@ -744,15 +978,18 @@ in this order.
 7. **Federate.** Discovery is the last dependency fallback cannot cover: an
    Adinal sold outside this application reaches the node only through
    reconciliation against GorillaPool. SHIP, SLAP, and GASP remove that, and
-   need a second node running `tm_adinals`.
+   need a second node running `tm_adinals`. Wallet repair, added on 2026-08-03,
+   narrows the gap without closing it: it covers records the connected wallet
+   holds, and nothing owned by someone who never opens the application.
 
 Alongside those: keep scheduled `npm run overlay:shadow` rounds against the CARS
 endpoint and retain divergence reports; watch the CARS balance, since top-ups
 cap at 10,000 satoshis and the CLI reports success even when the cloud rejects
 one; and keep all three documents current with exact results.
 
-If LARS is stopped, start only the required services; the old SkateSV, Space
-Payments, and template UI containers were stopped without deleting their data:
+If LARS is stopped, start only the required services. The old SkateSV, Space
+Payments, and template UI containers are permanently stopped by the operator's
+decision on 2026-08-03; their data was not deleted:
 
 docker compose -p lars_adinals -f local-data/docker-compose.yml up -d mysql mongo overlay-dev-container
 
@@ -979,21 +1216,88 @@ failed baseline skip the overlay entirely, so either number is both round trips
 combined. That is acceptable for background work; before stage two puts either
 read on the render path, the slower half still needs identifying.
 
-**Stage 2, not started: overlay-first hydration.** Ad and collection detail
-views read from the overlay and fall back to the current reader. Nothing on the
-site is populated from the overlay today: the CARS node receives every write and
-is compared on every collection view, while every rendered value still comes
-from GorillaPool and the derived reader.
+**Stage 2, implemented: overlay-first hydration.** Opening a collection now
+reads it from the overlay and renders from that answer, falling back whole to
+the existing reader on an empty result, an error, or a timeout.
 
-The work is a mapping exercise rather than a data problem. The application's ad
-view model carries twenty-two fields where `LifecycleProjection` produces nine,
-missing the mint's name, text, link, and timestamp, its chain position, the
-creator and duplicate-slot verdicts, the update timeline, the market event
-timeline, and the live creative URL. Every one of those is derivable from the
-single projection response already in hand: the mint record and its MAP supply
-the metadata, the BEEF merkle path supplies block position for confirmed
-transactions, and the same chain walk that produces the ownership outpoints
-produces the market events. No additional requests are required.
+The mapping half is now complete. `src/readers/overlayViewModel.ts` derives the
+application's own `Collection` and `Ad` shapes from one projection response:
+mint name, text, destination, and timestamp from MAP, chain position from the
+BEEF merkle path, the ownership chain by following input-0 links, and the market
+timeline from that chain. The update timeline carries each creator verdict with
+its outpoint, timestamp, and block position, and conflicting verdicts still fail
+closed. No additional requests are issued.
+
+Two rules kept the two readers from becoming two models. Every protocol
+judgement is made by the shared validators in
+`src/protocol/recordValidation.ts` rather than restated, so an overlay-rendered
+ad and a GorillaPool-rendered ad can disagree only about evidence. And the two
+derivations both readers previously duplicated — the collection record to the
+rendered collection, and the update timeline to the live creative and proposal
+status — now live in `src/readers/collectionViewModel.ts` as
+`collectionFromProtocolRow` and `resolveAdDisplay`, which the existing
+GorillaPool path in `App.tsx` calls instead of its own copies.
+
+The update's spend-linked proof is read from the evidence rather than fetched:
+the record, the state it spent, and the state it produced all arrive in the same
+response. An update whose successor state is absent is reported as unproven
+rather than assumed, so a partially ingested chain cannot publish a creative.
+
+`npm run overlay:view-model-diff` compares the view model against the parity
+projection derived from the same evidence. On 2026-08-03 all 8 collections on
+the hosted node matched exactly across 26 ads, 16 updates, and 32 market events:
+slot, current outpoint, owner, owner epoch, proposal status, creative kind,
+listing terms, live text, and image creative source. Collection views took 458
+to 2,317 milliseconds, matching the projection measurements. Fourteen unit tests
+cover the pending, approved, disapproved, conflicted, open-collection, sale,
+listing, unproven-update, wrong-signer, and duplicate-slot cases.
+
+The rendering half decides per collection.
+`src/readers/overlayCollectionRead.ts` returns `rendered`, `empty`,
+`unavailable`, or `disabled`, and only a `rendered` result carries a view, so a
+fallback cannot be rendered by accident. A collection the node holds without any
+mint counts as `empty` rather than as a collection whose ads have vanished: a
+genuinely empty collection renders identically from the existing reader, while a
+partially ingested one would not. `src/readers/collectionViewModel.ts` swaps
+that collection's ads with `replaceCollectionAds`, which leaves every other
+collection untouched and preserves optimistic local state exactly as a reload
+does, so an ad the visitor has just broadcast survives a swap the overlay has
+not seen yet.
+
+Two choices are worth stating. The read is bounded at four seconds rather than
+the twelve a background comparison may take, because a visitor waits behind it;
+exceeding it costs only the wait, since the view the fallback renders was
+already loaded before the read began. And the ad list holds a loading state
+while the decision is outstanding rather than showing one reader's answer and
+then the other's, so each render is attributable to exactly one source. The
+collection view says which one in plain words.
+
+Creatives are served from that same response. `overlayCreativeBytes` keeps the
+image bytes each verified output already carried, and the store hands the
+interface an object URL that precedes every public content host in
+`contentSources`. The bytes are as trustworthy as the record they arrived with:
+transaction ID, inscription envelope, and SIGMA were all checked during
+hydration, so this is the only creative source in the application that is
+verified rather than trusted. They are returned alongside the view rather than
+inside it, because the view is React state that is copied on every merge. An
+outpoint is immutable, so a repeat registration is the same bytes by definition
+and is ignored; the store bounds itself at 64 records and releases what it
+evicts. The live diff shows what this covers: the Billboards collection carries
+4 creatives and 302,222 bytes in the same response that renders it, and the
+Metanet image collection 4 and 224,556.
+
+The render budget is 8 seconds rather than the 4 it was first written with. A
+browser measured an image collection at 3,097 milliseconds, close enough to a
+four-second budget that an ordinary slow moment would have fallen back
+silently; a timeout should mean the node is unreachable, not that it was busy.
+
+The stage-one shadow read is deliberately retained. It now compares the overlay
+against the derived reader while the overlay is what renders, which is the
+divergence signal the migration needs; it costs one extra background read per
+collection opened and should be removed when the migration is finished.
+
+The full suite is 235 application tests with typecheck and the production build
+passing.
 
 The order that keeps the application working throughout:
 
@@ -1011,9 +1315,35 @@ knows what was submitted or backfilled into it and cannot discover a record it
 never ingested. Rendering a never-ingested record as missing would be worse than
 the lag it replaces.
 
-**Stage 3, not started: overlay-first discovery.** Collection and ad listings
-come from the overlay once its ingestion has proven complete over a longer
-period, with the current reader retained as fallback.
+**Stage 3, implemented: overlay-first discovery.** Rendering one collection from
+the overlay left GorillaPool on the critical path for every visit, because
+finding that collection still came from a namespace-wide index read: the list,
+the slot counts on every card, the pending-approval counts, the creator review
+statistics, the ownership panel, and the check that decides whether an immutable
+route opens at all.
+
+`src/readers/overlayNamespace.ts` replaces that read with the node's own
+`collections` listing plus one projection per collection, which is the same
+evidence the detail view already renders from. Every collection is hydrated,
+txid-checked, and signature-checked, and their creatives are registered on the
+way through, so collection covers no longer depend on a public content host
+either. The namespace succeeds or falls back together: a listed collection that
+does not resolve makes the whole read `unavailable` rather than quietly leaving
+a hole, because a missing collection is indistinguishable from one the node
+never ingested.
+
+It is also faster than what it replaces, which was not the reason for doing it
+but settles the objection. Measured against the hosted node on 2026-08-03, the
+overlay assembles 8 collections, 27 ads, 16 updates, and 33 market events in
+5,849 milliseconds. The GorillaPool path producing the same model takes 12,021:
+841 milliseconds of paginated searches and 11,180 proving sixteen updates from
+raw transactions. Both paths report identical counts. Reading concurrency is
+eight, measured: four readers took 7,169 milliseconds and twelve took 5,989, so
+the floor is the slowest single collection rather than the round trips.
+
+When the namespace resolves from the overlay, opening a collection issues no
+further read — every collection is already hydrated — and the per-collection
+path from stage two remains for the fallback case.
 
 One decision stands and one has been revised.
 

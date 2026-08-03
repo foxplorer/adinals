@@ -5,7 +5,7 @@ boundary. A TypeScript build alone is not compatibility: a passing action must
 also preserve exact transaction bytes, signatures, output positions, custody,
 and recovery behavior.
 
-Last updated: 2026-08-02.
+Last updated: 2026-08-03.
 
 ## Shared wallet contract
 
@@ -160,8 +160,13 @@ that every negative vector is rejected.
 | Hosted cross-origin browser submission | Pass: a Metanet Desktop collection posted BEEF from Brave to the CARS node with no proxy and reached indexed |
 | In-app overlay shadow read | Implemented and unit tested; compares the overlay against the rendered public reader in the background and never affects the view |
 | Overlay SPV completeness | Partial: records ingested while unconfirmed hold proof-less BEEF, so the node proves ancestry and signatures but not inclusion for its newest records |
-| Overlay independence | Partial: discovery still depends on GorillaPool reconciliation until a second node enables SHIP, SLAP, and GASP |
-| Overlay-first reads | Groundwork complete, migration not started: one-request projections deployed and fast enough to render from, view model extracted, market history derived from the chain; every displayed value still comes from GorillaPool |
+| Overlay independence | Partial: wallet repair adds a third-party-free ingestion path for records a connected wallet holds, but discovery still depends on GorillaPool reconciliation until a second node enables SHIP, SLAP, and GASP |
+| Overlay-sourced ownership history | Live: the ownership model's public half — held records, collection submissions, spend chains, and update proofs — is built from overlay evidence instead of the index and raw transactions. Custody still comes from the wallet. Discarded whole and re-read from the index when it does not cover every held outpoint |
+| Overlay-first discovery | Live: the node's `collections` listing plus one projection per collection replaces the namespace-wide index read, so the collection list, slot counts, review statistics, and immutable-route gating all come from verified evidence. 5,849 ms against 12,021 ms for the GorillaPool path producing the same model. Falls back as a whole namespace, never partially |
+| Overlay-first reads | Live for the collection view: four collections rendered from the overlay in a browser at 1,908 to 3,097 ms with the shadow read matching each, and the view model matches the parity projection across all 8 hosted collections. Falls back whole to the existing reader on an empty result, an error, or an eight-second timeout. Discovery and the collection list are still GorillaPool |
+| Wallet-sourced overlay repair | Both halves proven separately: a production wallet's 21 basket outputs were all classified from real `listOutputs` BEEF with nothing skipped, and two collections held only by the hosted node were submitted from BEEF alone into the local node and found present on re-inspection. Pruned lineages report the exact missing predecessor instead of being sent. Proven live against the local node: a wallet's 21 outputs resolved to 8 held, 5 submitted from the browser, and 8 pruned lineages naming their missing predecessors. Now runs automatically for every visitor, once per wallet and endpoint per day, disclosed in the wallet-connect copy |
+| Scheduled overlay maintenance | Installed 2026-08-03: hourly `overlay:reconcile` and daily `overlay:backfill` under cron, with a pinned Node runtime, a health precheck, per-mode locking, and retained logs. Its first run submitted one confirmed external spend the hosted node was missing |
+| Overlay-served creatives | Implemented, unproven in a browser: image bytes are read from the verified evidence that rendered the collection and precede every public content host, covering 4 creatives and 302,222 bytes for the Billboards collection in the same response |
 | Agent SDK/CLI/MCP interface | Not implemented |
 | Publisher moderation/reputation layer | Not implemented |
 

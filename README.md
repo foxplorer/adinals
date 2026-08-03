@@ -77,7 +77,7 @@ npm run build
 npm run preview
 ```
 
-The repository currently passes 178 browser and application tests across 33
+The repository currently passes 258 browser and application tests across 48
 Node test files, the independent collection script/fixture verifier, the backend
 overlay suite, TypeScript compilation, and the production Vite build.
 
@@ -119,10 +119,13 @@ supports both text and image creatives.
 
 ## Current infrastructure boundary
 
-**Reads** come from GorillaPool for record discovery and spend history, the
-derived public reader for JSON, and public content hosts for creative images,
-with WhatsOnChain raw-transaction checks for independent verification. A
-successful index submission does not prove an output is queryable, so the UI
+**Reads** come from the overlay: it discovers the collections, assembles every
+collection and ad from verified evidence, and serves the image creatives. When
+it answers incompletely the application falls back as a whole to GorillaPool for
+discovery and spend history, WhatsOnChain for raw transactions, and the public
+content hosts for images. Falling back covers an empty answer as well as an
+error, because an overlay only knows what was submitted or backfilled into it.
+A successful index submission does not prove an output is queryable, so the UI
 verifies exact outpoints separately and labels incomplete states as provisional
 rather than guessing.
 
@@ -132,6 +135,21 @@ as a processing acknowledgment, polls the exact hydrated outputs, persists
 provisional, indexed, retrying, and failed delivery state, and retries outages
 without ever changing the wallet action's own success. An update requires both
 its state output and its record output before it counts as delivered.
+
+A connected wallet also teaches the node what it holds. After a wallet connects,
+Adinals walks each Adinals basket output back through the transactions its own
+BEEF carries, asks the overlay which it already has, and offers the rest. Those
+records are already public on chain; nothing is created, signed, or broadcast.
+It runs at most once a day per wallet and endpoint, in the background, and the
+developer panel exposes the same thing as separate inspect and submit controls.
+Records whose lineage the wallet cannot complete are reported rather than sent,
+because a later state only admits once the overlay holds the output it spent.
+This is the one ingestion path that involves no third party.
+
+What a wallet cannot prove is recovered on a schedule instead.
+`scripts/overlay-cron.sh` runs confirmed reconciliation hourly and the confirmed
+backfill daily, so the node stays complete whether or not anyone opens the
+application.
 
 The overlay is a BRC-22/BRC-24/BRC-64 node whose topic manager and lookup
 resolver validate every record independently: OrdLock listing and purchase
@@ -145,11 +163,25 @@ been clean. The local LARS node under `backend/` remains a disposable rebuild
 and development target rather than a mirror.
 
 Opening a collection also schedules one background shadow read that projects
-the same collection from the overlay and records whether the two agree. Nothing
-it produces reaches the screen.
+the same collection from the derived reader and the overlay and records whether
+the two agree. Nothing it produces reaches the screen; it is the divergence
+signal for the migration rather than part of the render path.
 
-Reads have not moved. Nothing renders from the overlay yet, the application is
-stable on the current path, and the groundwork is in place.
+Reads have moved. The overlay now supplies discovery and every rendered
+collection, and the existing reader is the fallback rather than the source. A
+view is always attributable to one of them, never assembled from both, and the
+collection view names which one it came from.
+
+Image creatives are served from that same response rather than fetched from a
+content host, which makes them the only creatives in the application that are
+verified rather than trusted, and removes the roughly one-block window in which
+a newly published image is a 404 to everyone except its author.
+
+Both readers make their protocol judgements with the same validators and share
+one display resolution, so they can disagree only about evidence. A lapsed
+balance, a restarted node, or a changed endpoint degrades a visitor to the
+existing reader rather than to an error: a funded server is an operational
+detail while the records are permanent.
 
 Moving them is the current direction, and the reason is not speed: BEEF lets a
 client verify ownership, signatures, and history by SPV instead of trusting a
