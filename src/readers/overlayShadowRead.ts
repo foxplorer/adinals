@@ -5,6 +5,7 @@ import {
   type PublicLifecycleProjection,
 } from '../overlay/lifecycleParity.ts'
 import { readDerivedCollectionProjection } from './derivedApiReader.ts'
+import { withReadTimeout } from './readTimeout.ts'
 
 /**
  * Stage one of moving reads onto the overlay: compare, never render.
@@ -45,20 +46,6 @@ const retained: OverlayShadowReadResult[] = []
 
 export const retainedOverlayShadowReads = (): readonly OverlayShadowReadResult[] => [...retained]
 
-const withTimeout = async <T>(work: Promise<T>, timeoutMs: number, label: string): Promise<T> => {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      work,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs)
-      }),
-    ])
-  } finally {
-    if (timer) clearTimeout(timer)
-  }
-}
-
 const message = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
@@ -90,7 +77,7 @@ export async function readOverlayShadowComparison(
   let expected: PublicLifecycleProjection
   const referenceStartedAt = Date.now()
   try {
-    expected = await withTimeout(reference(origin), timeoutMs, 'reference read')
+    expected = await withReadTimeout(reference(origin), timeoutMs, 'reference read')
     referenceMs = Date.now() - referenceStartedAt
   } catch (error) {
     // The comparison baseline is missing, so the overlay cannot be judged.
@@ -100,7 +87,7 @@ export async function readOverlayShadowComparison(
 
   const overlayStartedAt = Date.now()
   try {
-    const overlay = await withTimeout(options.overlay(origin), timeoutMs, 'overlay read')
+    const overlay = await withReadTimeout(options.overlay(origin), timeoutMs, 'overlay read')
     overlayMs = Date.now() - overlayStartedAt
     const errors = comparePublicLifecycleProjection(expected, publicLifecycleProjection(overlay))
     return result(errors.length ? 'diverged' : 'match', errors)
