@@ -2158,6 +2158,15 @@ a.adlab-destination:focus-visible {
   scroll-margin-top: 18px;
 }
 
+/* Which reader produced the collection on screen. Deliberately quiet: it is
+   provenance, not a status the visitor has to act on. */
+.adlab-read-source {
+  margin: 14px 0 0;
+  color: #8d9186;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .adlab-legal {
   margin-top: 18px;
   overflow: hidden;

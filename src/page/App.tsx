@@ -22,7 +22,15 @@ import {
   type Row,
 } from '../readers/productCatalog'
 import { isFoxplorerCreator } from '../curation'
-import type { Ad, Collection, Update } from '../readers/collectionViewModel.ts'
+import {
+  collectionFromProtocolRow,
+  preservePendingAdState,
+  replaceCollectionAds,
+  resolveAdDisplay,
+  type Ad,
+  type Collection,
+  type Update,
+} from '../readers/collectionViewModel.ts'
 import {
   buyAd,
   cancelAdListing,
@@ -40,6 +48,11 @@ import {
 } from '../wallet/productWallet'
 import { ADINALS_NAMESPACE, ADINALS_OVERLAY_URL } from '../config/environment.ts'
 import { runOverlayShadowRead } from '../readers/overlayShadowReadClient.ts'
+import { runOverlayCollectionRead } from '../readers/overlayCollectionReadClient.ts'
+import { overlayCreativeUrl } from '../readers/creativeStore.ts'
+import { repairOverlayFromBasketsOnce } from '../overlay/basketRepairClient.ts'
+import { runOverlayNamespaceRead } from '../readers/overlayNamespaceClient.ts'
+import type { OverlayCollectionReadStatus } from '../readers/overlayCollectionRead.ts'
 import type {
   OverlaySubmission,
   OverlaySubmissionStatus,
@@ -197,69 +210,27 @@ function activityEntries(ad: Ad): ActivityEntry[] {
   })
 }
 
-/**
- * A successful broadcast is already authoritative enough to update the local
- * dashboard. Keep those optimistic consequences if a manual/background reload
- * reaches a search index before that index exposes the new outpoint.
- */
-function preservePendingAdState(loaded: Ad[], current: Ad[]): Ad[] {
-  const currentByOrigin = new Map(current.map((ad) => [ad.origin, ad]))
-  const merged = loaded.map((ad) => {
-    const previous = currentByOrigin.get(ad.origin)
-    if (!previous) return ad
-
-    const loadedUpdates = new Set(ad.updates.map((update) => update.outpoint))
-    const pendingUpdates = previous.updates.filter(
-      (update) => update.height === null && !loadedUpdates.has(update.outpoint)
-    )
-    const loadedMarketEvents = new Set(ad.marketEvents.map((event) => event.outpoint))
-    const pendingMarketEvents = previous.marketEvents.filter(
-      (event) => event.height === null && !loadedMarketEvents.has(event.outpoint)
-    )
-
-    if (!pendingUpdates.length && !pendingMarketEvents.length) return ad
-
-    const withUpdates = pendingUpdates.length
-      ? {
-          ...ad,
-          outpoint: previous.outpoint,
-          owner: previous.owner,
-          ownerEpoch: previous.ownerEpoch,
-          updates: [...ad.updates, ...pendingUpdates],
-          liveText: previous.liveText,
-          liveContentUrl: previous.liveContentUrl,
-          liveUrl: previous.liveUrl,
-          status: previous.status,
-        }
-      : ad
-
-    return pendingMarketEvents.length
-      ? {
-          ...withUpdates,
-          outpoint: previous.outpoint,
-          owner: previous.owner,
-          ownerEpoch: previous.ownerEpoch,
-          listing: previous.listing,
-          updates: previous.updates,
-          liveText: previous.liveText,
-          liveContentUrl: previous.liveContentUrl,
-          liveUrl: previous.liveUrl,
-          status: previous.status,
-          marketEvents: [...ad.marketEvents, ...pendingMarketEvents],
-        }
-      : withUpdates
-  })
-
-  const loadedOrigins = new Set(loaded.map((ad) => ad.origin))
-  return [...merged, ...current.filter((ad) => ad.height === null && !loadedOrigins.has(ad.origin))]
-}
-
 const WOC_TX = 'https://whatsonchain.com/tx'
-const contentSources = (outpoint: string) => [
-  `${CONTENT}/${outpoint}`,
-  `https://ordfs.network/${outpoint}`,
-  `https://api.1sat.app/content/${outpoint}`,
-]
+/**
+ * Where a creative's bytes may be read from, best first.
+ *
+ * Overlay evidence comes first because it is the only source that was verified
+ * rather than trusted: those bytes arrived inside the BEEF that proved the
+ * record, checked against its transaction ID and signature in this browser. The
+ * public hosts remain as fallback, and as the only source for a record this
+ * session never read from the overlay. A newly published image is served here
+ * immediately, while the content hosts return 404 until its transaction
+ * confirms.
+ */
+const contentSources = (outpoint: string) => {
+  const proven = overlayCreativeUrl(outpoint)
+  return [
+    ...(proven ? [proven] : []),
+    `${CONTENT}/${outpoint}`,
+    `https://ordfs.network/${outpoint}`,
+    `https://api.1sat.app/content/${outpoint}`,
+  ]
+}
 
 function InscriptionImage({
   outpoint,
@@ -801,26 +772,7 @@ function subTypeData(map: Record<string, unknown>): Record<string, unknown> {
 }
 
 function collectionFromRow(row: Row): Collection | null {
-  const validation = collectionRulesFromRecord(row)
-  if (validation.error) return null
-
-  const data = subTypeData(row.map)
-  return {
-    origin: row.origin,
-    name: str(row.map.name, '(unnamed)'),
-    description: str(data.description),
-    creator: row.signer,
-    max: validation.rules.capacity,
-    approval: validation.rules.approval,
-    contentPolicy: str(row.map.adContentPolicy, 'unspecified'),
-    format: validation.rules.format,
-    imageProfile: validation.rules.imageProfile ?? '',
-    maxChars: validation.rules.maxChars ?? 0,
-    placement: str(row.map.adPlacement),
-    expiresAt: str(row.map.expiresAt),
-    expired: hasExpired(str(row.map.expiresAt)),
-    height: row.originHeight,
-  }
+  return collectionFromProtocolRow(row, row.originHeight)
 }
 
 function provenanceRoute(pathname: string):
@@ -913,6 +865,18 @@ export function AdLab() {
   const [activeTab, setActiveTab] = useState<'approvals' | 'ads' | 'collections'>('collections')
   const [loading, setLoading] = useState(false)
   const [hasLoaded, setHasLoaded] = useState(false)
+  // Which reader produced the collection currently on screen. Attribution is per
+  // collection, never per field: a mixed view would make a divergence between
+  // the two readers nearly impossible to diagnose.
+  const [overlayReadStatus, setOverlayReadStatus] =
+    useState<Record<string, OverlayCollectionReadStatus>>({})
+  const [overlayReadPending, setOverlayReadPending] = useState<string | null>(null)
+  // Whether the whole model on screen came from the overlay. When it did, every
+  // collection is already hydrated and opening one needs no further read.
+  const [namespaceSource, setNamespaceSource] = useState<'overlay' | 'reference'>('reference')
+  // Every reference load reopens the question of which reader owns the view, so
+  // the overlay read repeats after one rather than being silently overwritten.
+  const [loadRevision, setLoadRevision] = useState(0)
   const [collectionScope, setCollectionScope] = useState<CollectionScope>('all')
   const [showExpiredCollections, setShowExpiredCollections] = useState(false)
 
@@ -968,6 +932,39 @@ export function AdLab() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
+      // Discovery first. One projection per collection is the same evidence the
+      // detail view renders from, so a namespace that resolves completely
+      // replaces the index read rather than supplementing it. Anything less
+      // than complete falls through to the reader below, because a partial
+      // namespace would hide a collection rather than delay it.
+      const namespace = await runOverlayNamespaceRead().catch((error: unknown) => {
+        console.warn('Overlay namespace read failed', error)
+        return null
+      })
+      if (namespace?.status === 'rendered' && namespace.namespace) {
+        const { collections: overlayCollections, ads: overlayAds } = namespace.namespace
+        setCollections(overlayCollections)
+        setAds((current) => preservePendingAdState(overlayAds, current))
+        setOverlayReadStatus(Object.fromEntries(
+          overlayCollections.map((item) => [item.origin, 'rendered' as const]),
+        ))
+        setNamespaceSource('overlay')
+        console.info(
+          `Overlay namespace read rendered ${overlayCollections.length} collection(s)`
+          + ` and ${overlayAds.length} ad(s) in ${namespace.durationMs}ms`,
+        )
+        return
+      }
+      if (namespace && namespace.status !== 'disabled') {
+        console.warn(
+          `Overlay namespace read ${namespace.status} in ${namespace.durationMs}ms;`
+          + ' reading the namespace from the public reader',
+          namespace.errors,
+        )
+        setOverlayReadStatus({})
+      }
+      setNamespaceSource('reference')
+
       const [collectionRows, adRows, updateRows, decisionRows] = await Promise.all([
         readRecords('collection'),
         readRecords('ad'),
@@ -1126,37 +1123,15 @@ export function AdLab() {
             }
           })
 
-          // Status describes the current owner's newest proposal, while live
-          // text resolves independently to that owner's newest publishable
-          // update. A pending or rejected proposal must not erase an older
-          // approval; after a sale, former-owner updates are invalid and the
-          // mint text remains until the buyer gets an update published.
-          let liveText = mintText
-          let liveContentUrl = format === 'image' ? row.origin : ''
-          let liveUrl = mintUrl
-          let status: Ad['status'] = 'live'
-          let foundProposalStatus = false
-          for (let i = updates.length - 1; i >= 0; i -= 1) {
-            const update = updates[i]
-            if (!update?.valid) continue
-            const publishable =
-              update.verdict !== 'conflicted' &&
-              (openCollection || update.signer === creator || update.verdict === 'approved')
-            if (!foundProposalStatus) {
-              status = publishable
-                ? 'live'
-                : update.verdict === 'disapproved' || update.verdict === 'conflicted'
-                  ? 'rejected'
-                  : 'pending'
-              foundProposalStatus = true
-            }
-            if (publishable) {
-              liveText = update.text
-              liveContentUrl = update.format === 'image' ? update.contentUrl : ''
-              liveUrl = update.url
-              break
-            }
-          }
+          const { liveText, liveContentUrl, liveUrl, status } = resolveAdDisplay(
+            updates,
+            {
+              text: mintText,
+              contentUrl: format === 'image' ? row.origin : '',
+              url: mintUrl,
+            },
+            { approval: openCollection ? 'open' : 'creator', creator },
+          )
 
           return {
             origin: row.origin,
@@ -1230,12 +1205,53 @@ export function AdLab() {
     } finally {
       setLoading(false)
       setHasLoaded(true)
+      setLoadRevision((current) => current + 1)
     }
   }, [])
 
   useEffect(() => {
     void load()
   }, [load])
+  /**
+   * Stage two of overlay reads: render the open collection from the overlay,
+   * or fall back to the reader that just produced it.
+   *
+   * The reference load has already run, so this replaces one collection's ads
+   * rather than fetching them for the first time. Falling back leaves exactly
+   * what that load produced, which is why an overlay outage, an empty answer,
+   * or a slow node costs a visitor a spinner rather than a view.
+   */
+  useEffect(() => {
+    // Reading the namespace from the overlay already hydrated every collection,
+    // so opening one would only ask the same question twice.
+    if (!selected || !ADINALS_OVERLAY_URL || namespaceSource === 'overlay') return
+    let cancelled = false
+    setOverlayReadPending(selected)
+    void runOverlayCollectionRead(selected).then((result) => {
+      if (cancelled) return
+      setOverlayReadPending((current) => (current === selected ? null : current))
+      setOverlayReadStatus((current) => ({ ...current, [selected]: result.status }))
+      const summary = `Overlay collection read ${result.status} in ${result.durationMs}ms`
+      if (result.status === 'rendered' && result.view) {
+        setCollections((current) => current.map((item) =>
+          item.origin === selected ? result.view!.collection : item))
+        setAds((current) => replaceCollectionAds(current, result.view!.ads, selected))
+        console.info(summary, selected)
+      } else {
+        // Every outcome is reported while reads are migrating: a silent
+        // fallback is indistinguishable from a read that never ran.
+        console.warn(`${summary}; rendering from the public reader`, selected, result.errors)
+      }
+    }).catch(() => {
+      if (cancelled) return
+      setOverlayReadPending((current) => (current === selected ? null : current))
+      setOverlayReadStatus((current) => ({ ...current, [selected]: 'unavailable' }))
+    })
+    return () => {
+      cancelled = true
+      setOverlayReadPending((current) => (current === selected ? null : current))
+    }
+  }, [selected, loadRevision, namespaceSource])
   useEffect(() => {
     if (proofRetryRevision === null) return
     const attempt = proofRetryAttempts.current
@@ -1249,6 +1265,14 @@ export function AdLab() {
   useEffect(() => {
     if (!keys) setActiveTab('collections')
   }, [keys])
+  // A connected wallet is the one ingestion path that needs no third party: it
+  // already holds verified BEEF for its own Adinals, including any acquired
+  // outside this application. Offering them runs once per wallet and endpoint,
+  // in the background, and never affects what is on screen.
+  useEffect(() => {
+    if (!wallet || !session?.identityKey) return
+    void repairOverlayFromBasketsOnce(wallet, session.identityKey)
+  }, [wallet, session?.identityKey])
   // Stage one of overlay reads: compare the configured overlay against the
   // rendered public reader in the background and retain the result. Nothing
   // here feeds the view, so an unavailable overlay changes nothing on screen.
@@ -1474,6 +1498,10 @@ export function AdLab() {
         : [],
     [ads, collection]
   )
+  // While the overlay is deciding whether it can answer, the ad list waits
+  // rather than showing one reader's answer and then the other's.
+  const readPending = Boolean(collection && overlayReadPending === collection.origin)
+  const visibleMembers = readPending ? [] : members
   const canonicalMembers = useMemo(
     () =>
       collection
@@ -1830,6 +1858,11 @@ export function AdLab() {
                     <span className="adlab-kicker">Get started</span>
                     <strong>Connect a BRC-100 wallet</strong>
                     <p>Your wallet funds, signs, and retains every Adinal output.</p>
+                    <p className="ads-note">
+                      Once connected, Adinals checks whether the overlay index already knows the Adinals your wallet
+                      holds, and offers it the ones it is missing. Those records are already public on chain; nothing
+                      is created, signed, or broadcast, and your keys never leave your wallet.
+                    </p>
                   </div>
                   <div className="adlab-wallet-actions">
                     <button
@@ -2787,6 +2820,16 @@ export function AdLab() {
             </div>
           )}
 
+          {ADINALS_OVERLAY_URL && (
+            <p className="adlab-read-source" aria-live="polite">
+              {readPending
+                ? 'Checking whether the overlay can prove this collection…'
+                : overlayReadStatus[collection.origin] === 'rendered'
+                  ? 'This collection is rendered from overlay evidence: every record below arrived with its transaction, ancestry, and signatures, and was verified in this browser.'
+                  : 'This collection is rendered from the public reader. The overlay had no complete answer for it.'}
+            </p>
+          )}
+
           <div className="adlab-ad-list">
               <div className="adlab-ad-list-head" aria-hidden="true">
                 <span>Slot</span>
@@ -2797,7 +2840,13 @@ export function AdLab() {
                 <span>Sale</span>
                 <span>Activity</span>
               </div>
-              {members.length === 0 && (
+              {readPending && (
+                <div className="adlab-empty">
+                  <strong>Reading this collection…</strong>
+                  <span>Verifying its records before they are displayed.</span>
+                </div>
+              )}
+              {!readPending && members.length === 0 && (
                 <div className="adlab-empty">
                   <strong>No ad slots minted yet</strong>
                   <span>
@@ -2807,7 +2856,7 @@ export function AdLab() {
                   </span>
                 </div>
               )}
-                {members.map((ad) => {
+                {visibleMembers.map((ad) => {
                   const mine = Boolean(
                     keys && !ad.listing && ownsAd(keys, ad.origin, ad.owner)
                   )
