@@ -12,6 +12,12 @@ import {
   decodeP2PKHScript,
 } from '../protocol/scriptTemplates.ts'
 import type { AdinalsOverlayClient, OverlayQuery } from '../overlay/client.ts'
+import {
+  deriveCollectionView,
+  type CollectionView,
+  type EvidenceRecord,
+} from './overlayViewModel.ts'
+import type { Creative } from './creativeStore.ts'
 
 export type OverlayRecordType =
   | 'collection'
@@ -440,6 +446,72 @@ export async function readOverlayLifecycleProjectionPerAd(
   const ads = await Promise.all(mints.map((mint) => deriveAdProjection(client, collection, mint)))
   ads.sort((left, right) => left.slot - right.slot || left.origin.localeCompare(right.origin))
   return { collection: facts, ads }
+}
+
+/**
+ * Reduces hydrated outputs to the facts the view model derives from.
+ *
+ * The mapper deliberately takes plain records rather than transactions: every
+ * signature, txid, and output index has already been checked by the time an
+ * output reaches here, and keeping the mapping free of the template package is
+ * what lets it run under Node's test runner.
+ */
+export const overlayEvidence = (
+  records: readonly OverlayVerifiedOutput[],
+): EvidenceRecord[] => records.map((record) => ({
+  outpoint: record.outpoint,
+  recordType: record.recordType,
+  map: record.map,
+  signer: record.signer,
+  owner: record.owner,
+  listing: record.listing,
+  height: record.height,
+  index: record.index,
+  predecessor: sourceOutpoint(record),
+}))
+
+/**
+ * Collects the creative bytes the same evidence already carried.
+ *
+ * Only images are kept: text creatives are read from MAP and would occupy the
+ * store for nothing. Each one is byte-for-byte what the inscription committed
+ * to, in a transaction whose ID and signature were checked during hydration.
+ */
+export const overlayCreativeBytes = (
+  records: readonly OverlayVerifiedOutput[],
+): Creative[] => records
+  .filter((record) => record.contentType.startsWith('image/') && record.content.length > 0)
+  .map((record) => ({
+    outpoint: record.outpoint,
+    contentType: record.contentType,
+    bytes: record.content,
+  }))
+
+/**
+ * Reads one collection from the overlay as the interface renders it.
+ *
+ * A null view means the node holds no valid record for this collection, which a
+ * caller must treat as unknown rather than empty and answer from the existing
+ * reader. Creatives are returned alongside it rather than inside the model: the
+ * view is React state that is copied on every merge, and image bytes have no
+ * business being copied with it.
+ */
+export async function readOverlayCollectionView(
+  client: OverlayLookupClient,
+  collectionOrigin: string,
+  now = new Date(),
+): Promise<{ view: CollectionView | null; creatives: Creative[] }> {
+  const origin = collectionOrigin.toLowerCase()
+  if (!outpointPattern.test(origin)) {
+    throw new Error('A valid collection origin is required for an overlay collection view.')
+  }
+  const evidence = await readOverlayFormula(client, {
+    type: 'collectionProjection', version: 1, origin,
+  })
+  return {
+    view: deriveCollectionView(overlayEvidence(evidence), origin, now),
+    creatives: overlayCreativeBytes(evidence),
+  }
 }
 
 export async function dualReadLifecycle(

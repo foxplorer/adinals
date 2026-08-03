@@ -5,6 +5,7 @@ dist/
 .overlay-parity-dist/
 .overlay-reconcile-dist/
 .overlay-projection-dist/
+.overlay-view-model-dist/
 coverage/
 *.tsbuildinfo
 vite.config.js
