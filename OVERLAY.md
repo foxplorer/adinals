@@ -754,6 +754,57 @@ looks like a broken record rather than an incomplete index, so a snapshot that
 does not cover every custody outpoint is discarded whole and the index answers
 instead, with a notice saying how many outputs were missing.
 
+### Creatives before confirmation, in practice
+
+Serving creatives from evidence is only true if the evidence is current, and two
+defects made it briefly untrue.
+
+Retained namespace evidence exists to stop the rendered model and the ownership
+index reading the same projections twice, but a load is the interaction that
+follows a publication, so reusing evidence read before it hid the record just
+created. A load now discards retained evidence first.
+
+And `InscriptionImage` reset its failure state only when its outpoint changed.
+Overlay bytes usually register after the first render, while a content host
+returns 404 for an unconfirmed inscription, so an image failed over the public
+hosts and then ignored the proven bytes that arrived moments later until a
+thirty-second retry. It now retries the instant a proven source appears.
+
+Two paths were missing at the point of publication. A new mint did not retain
+the creator's own bytes as a local preview, which the collection cover and ad
+update paths both did, so the creator watched a placeholder for their own image.
+And nothing re-read the overlay when a submission reached `indexed`, which is
+the moment the node provably holds the record. Both are now wired: the creator's
+bytes appear at once, and are replaced by verified bytes as soon as the node
+confirms it holds them.
+
+Proven on 2026-08-03 against the hosted node. Two mints in the same collection:
+one confirmed at block 960,707 carrying 2,319 bytes of PNG, and one **still
+unconfirmed** carrying 2,713 bytes. Both render, and the unconfirmed one renders
+after a hard refresh, which clears the creator's local preview and leaves the
+overlay as the only possible source.
+
+The limit is worth stating precisely. An image displays without confirmation for
+any record the overlay holds. A record the node never ingested, or an
+unreachable node, falls back to the content hosts, which 404 until a block. And
+embeds, the derived reader JSON, and agents still read content hosts entirely,
+so the one-block window persists for every third-party consumer until they read
+from the overlay too. That is a change to the embed and the reader rather than
+to the protocol.
+
+### Waiting is shown rather than hidden
+
+A namespace read takes seconds, so each tab shows a pulse in the place its
+content will occupy, replacing the empty state rather than sitting above it.
+The distinction matters: "No public collections indexed yet" is a claim about
+the namespace, and it cannot honestly be made until the read that would populate
+it has finished.
+
+The refresh control says "Reading records…" rather than naming a source. The
+same action tries the overlay and falls back to the public reader, and which one
+answers is not known until it does; the collection view names the source
+afterwards, where the claim can be true.
+
 ## Using this overlay for other applications
 
 The namespace read exists because the product is an explorer for every
@@ -902,10 +953,15 @@ Verified state as of 2026-08-02, end of session:
   the two readers share one model. `npm run overlay:view-model-diff` matched all
   8 hosted collections, 26 ads, 16 updates, and 32 market events exactly.
 - The whole read path renders from the overlay as of 2026-08-03: discovery, the
-  collection list, every collection view, and image creatives. GorillaPool is
-  reached only when the overlay answers incompletely, and the application falls
-  back as a whole namespace rather than per collection. Write paths are
-  unchanged and still submit to both.
+  collection list, every collection view, image creatives, and the public half
+  of ownership history. GorillaPool is reached only when the overlay answers
+  incompletely, and the application falls back as a whole namespace rather than
+  per collection. Write paths are unchanged and still submit to both.
+- Still on GorillaPool by design: the shadow-read baseline, the reconcile and
+  backfill cron, content hosts as image fallback, and everything a third party
+  reads through the embed or the derived JSON. Still open: the exact-outpoint
+  poll on writes, resolver indexing, proof upgrade for records ingested while
+  unconfirmed, and federation.
 - Measured on the hosted node: the overlay assembles the namespace in 5,849 ms
   against 12,021 ms for the GorillaPool path producing the same model, with
   identical counts of 8 collections, 27 ads, and 16 updates.

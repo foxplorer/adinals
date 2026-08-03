@@ -174,8 +174,10 @@ collection view names which one it came from.
 
 Image creatives are served from that same response rather than fetched from a
 content host, which makes them the only creatives in the application that are
-verified rather than trusted, and removes the roughly one-block window in which
-a newly published image is a 404 to everyone except its author.
+verified rather than trusted. A newly published image is displayed before its
+transaction confirms, proven against a live unconfirmed mint; embeds and the
+derived JSON reader still use content hosts, so the one-block window remains for
+those consumers.
 
 Both readers make their protocol judgements with the same validators and share
 one display resolution, so they can disagree only about evidence. A lapsed

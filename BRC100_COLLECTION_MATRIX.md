@@ -155,7 +155,7 @@ that every negative vector is rejected.
 | Cross-wallet purchase, update, and approval | Pass on the hosted node: bought with Yours, updated by the buyer, approved with Metanet, all resolving against the public reader |
 | Image collection cover | Pass on Metanet Desktop with current code: about eleven thousand satoshis, no wallet correction, and a 129 KB BEEF admitted by the hosted overlay before the public content host served the image |
 | Image mints and updates | Pass on current code: a full image lifecycle of mint, listing, purchase, owner update, and creator approval, with both update outputs admitted by the hosted overlay at 126 KB of BEEF each |
-| Public image availability | Lags the overlay by roughly one block: the derived reader failed an entire image ad with a content 404 while unconfirmed, and served it normally once the transaction confirmed. The overlay held the complete record throughout |
+| Public image availability | Closed inside the application, open for third parties. An unconfirmed mint carrying 2,713 bytes of PNG renders from overlay evidence after a hard refresh, with no local preview and no block. Embeds, the derived reader JSON, and agents still read content hosts, which 404 until confirmation |
 | CARS shadow deployment | Live: release `6cbe8de9` serves `tm_adinals`/`ls_adinals` over HTTPS, replayed the confirmed namespace, and passes full shadow rounds |
 | Hosted cross-origin browser submission | Pass: a Metanet Desktop collection posted BEEF from Brave to the CARS node with no proxy and reached indexed |
 | In-app overlay shadow read | Implemented and unit tested; compares the overlay against the rendered public reader in the background and never affects the view |
