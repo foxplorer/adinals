@@ -1,3 +1,5 @@
+import { ADINALS_TEXT_MAX_CHARS } from './records.ts'
+
 export const ADINALS_PROTOCOL_VERSION = '3' as const
 export const ADINALS_IMAGE_PROFILE = 'image-2x1-v1' as const
 
@@ -146,6 +148,9 @@ export function validateCollectionMap(
   if (map.adFormat === 'text') {
     const maxChars = Number(map.adMaxChars)
     if (!Number.isSafeInteger(maxChars) || maxChars < 1) errors.push('invalid maximum text length')
+    else if (maxChars > ADINALS_TEXT_MAX_CHARS) {
+      errors.push('maximum text length exceeds protocol limit')
+    }
   }
   if (map.adFormat === 'image' && map.adImageProfile !== ADINALS_IMAGE_PROFILE) {
     errors.push('unsupported image profile')

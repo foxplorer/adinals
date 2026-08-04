@@ -1,4 +1,9 @@
-import type { AdinalsRecordEnvelope } from './recordEnvelope.js'
+import {
+  ADINALS_TEXT_MAX_BYTES,
+  ADINALS_TEXT_MAX_CHARS,
+  utf8Bytes,
+  type AdinalsRecordEnvelope
+} from './recordEnvelope.js'
 
 const OUTPOINT = /^[0-9a-f]{64}_\d+$/
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const
@@ -79,7 +84,15 @@ export const mintCandidateErrors = (
     const maxChars = positiveDecimal(map.adMaxChars)
     if (!map.adText?.trim()) errors.push('empty mint text')
     if (maxChars === null) errors.push('invalid maximum text length')
+    else if (maxChars > ADINALS_TEXT_MAX_CHARS) {
+      errors.push('maximum text length exceeds protocol limit')
+    }
     else if ([...(map.adText ?? '')].length > maxChars) errors.push('mint text too long')
+    // Characters are what a creator reasons in; bytes are what the script
+    // carries, and a multi-byte character costs up to four of them.
+    if (utf8Bytes(map.adText ?? '') > ADINALS_TEXT_MAX_BYTES) {
+      errors.push('mint text exceeds protocol byte limit')
+    }
   }
 
   if (map.adFormat === 'image') {

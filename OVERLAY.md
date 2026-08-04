@@ -24,6 +24,19 @@ incomplete.
 
 ## Current implementation status
 
+As of 2026-08-04 the node serves every lifecycle query from an indexed derived
+projection rather than by scanning stored evidence, and answers
+`collectionsByCreator`, `adsByOwner`, and a whitelisted metadata `search`
+alongside the original queries. The projection is disposable and versioned: it
+replays from local evidence in roughly 200 milliseconds and never touches the
+chain. `npm run overlay:derivation-diff` proves it answers identically to the
+scanning resolver it replaced. See "Derived state" for the design and the
+`lifecycleKind` note under "Admitted transaction coverage" for why admission-time
+classification had to change.
+
+The rest of this section describes how the node reached that point and remains
+accurate.
+
 As of 2026-08-02, `@bsv/lars` 1.5.8 is installed in the root development
 dependencies. The repository contains `deployment-info.json` plus an isolated
 `backend/` package registering `tm_adinals` and `ls_adinals`. The first local
@@ -338,6 +351,7 @@ npm run overlay:backfill
 npm run overlay:smoke
 npm run overlay:parity
 npm run overlay:view-model-diff
+npm run overlay:derivation-diff
 npm run overlay:reconcile
 npm run overlay:shadow -- --rounds=4 --interval=900
 npm run overlay:cars:preflight
@@ -345,10 +359,12 @@ npm run overlay:cars:config
 npm run overlay:cars:build
 ```
 
-`overlay:shadow`, `overlay:parity`, `overlay:view-model-diff`, and
-`overlay:reconcile` all honor
+`overlay:shadow`, `overlay:parity`, `overlay:view-model-diff`,
+`overlay:projection-diff`, and `overlay:reconcile` all honor
 `ADINALS_OVERLAY_URL`, so the same commands verify a remote shadow node once one
-exists. `overlay:cars:preflight` and `overlay:cars:config` are offline;
+exists. `overlay:derivation-diff` is the exception: it connects to Mongo
+directly and therefore only runs against a local node, which is why the CARS
+acceptance gate is the HTTP suite rather than this one. `overlay:cars:preflight` and `overlay:cars:config` are offline;
 `overlay:cars:build` only writes a local artifact file. None of them contacts a
 CARS Cloud, creates a project, or uploads a release.
 
@@ -442,12 +458,30 @@ and versions the query object. The deployed service implements:
 - `history` by immutable ad origin;
 - `adCurrent` by immutable ad origin;
 - `collectionLive` by immutable origin;
-- `collectionProjection` by immutable origin; and
-- `pendingDecisions` by creator.
+- `collectionProjection` by immutable origin;
+- `pendingDecisions` by creator;
+- `collectionsByCreator` by creator address;
+- `adsByOwner` by current owner address; and
+- `search` over whitelisted indexed fields, including arbitrary `map.*` metadata.
 
-`collectionsByCreator` and `adsByOwner` were listed here before they existed and
-are **not** implemented. They are the natural next additions, and both are
-node-side work against fields already on chain rather than protocol changes.
+`collectionsByCreator` and `adsByOwner` were documented here before they existed
+and are now implemented, along with `search`. All three read the derived
+projection described under "Derived state" and cost one indexed query rather
+than a namespace scan.
+
+`search` accepts a `where` object and an optional `scope` of `collection`
+(default) or `ad`. Its keys are whitelisted against what is actually indexed and
+an unknown key is refused, so a query cannot silently fall back to a collection
+scan. Collections may be searched by `collectionId`, `creator`, `name`,
+`adPlacement`, `adFormat`, `adApproval`, and any `map.*` key; ads by `adOrigin`,
+`collectionId`, `creator`, `currentOwner`, `ownerEpoch`, `proposalStatus`,
+`adFormat`, `listed`, and `slot`.
+
+A label is not authority. Any creator can write any `adPlacement` or `name`, so
+an application scoping itself to its own records must pair the label with
+`creator`, which is SIGMA derived and unforgeable. The same label with a
+different creator returns nothing, and there is a regression test for exactly
+that case.
 
 Health and service discovery are available at `/health/live`, `/health/ready`,
 `/health`, `/listTopicManagers`, and `/listLookupServiceProviders`.
@@ -545,6 +579,88 @@ The first storage model should distinguish:
 Lookup answers return verifiable output references/BEEF through the overlay
 engine. Derived JSON for embedders and agents remains a separate reader layer
 that reuses the same protocol resolver and reports its evidence source.
+
+## Derived state
+
+The resolver in `lifecycleResolution.ts` remains the single definition of what a
+chain means. What changed is when it runs: once at write time instead of once
+per read.
+
+Two Mongo collections sit alongside the evidence, with opposite lifecycles.
+`adinals_outputs` is append-only, permanent, and never rebuilt — it is the thing
+a chain re-fetch could lose, so it is the thing that must never be thrown away.
+`adinals_ads` and `adinals_collections` are derived, disposable, and stamped
+with `DERIVATION_VERSION`. A node whose stored projections carry an older
+version replays them on boot from evidence it already holds, in milliseconds,
+with no network and no chain access at all.
+
+That is the property worth having. Every future change to the derived schema is
+a version bump and a redeploy rather than a migration, and the replay reads
+nothing but local data. Chain re-ingestion is a different operation with
+different risks and belongs to `overlay:backfill`, which exists to *discover*
+records nobody submitted.
+
+`projections.ts` derives by calling `resolveAdHistory` and `resolveAdCurrent`
+rather than restating them, so the projection cannot develop its own opinion
+about the protocol. Evidence order is preserved rather than re-sorted: `states`
+comes from the chain walk and therefore begins at the mint, which readers rely
+on — `overlayReader` refuses a history whose first ownership state is not the
+ad's origin. Only `decisions` is gathered by filtering storage, so only
+`decisions` needs a deterministic order imposed on it to survive a replay.
+
+Every row carries `collectionId`, and every ad-scoped row carries `adOrigin`.
+Immutable records take that scope from their own MAP envelope; successor states
+inherit it from the predecessor they spend, because a bare P2PKH or OrdLock
+output names neither. Six indexes follow from it, including a wildcard index
+over `map` so arbitrary metadata is searchable without a node release per
+question.
+
+### Replays are serialized and coalesced
+
+Two problems appear the moment real submissions arrive rather than tests.
+`replaceCollectionProjection` clears a collection's ads and reinserts them,
+which is not atomic, so two admissions in the same collection landing together
+can interleave one's delete with the other's insert and leave ads missing — a
+silently short answer, which is the worst shape of bug this layer can have. And
+a backfill submits a collection's records one at a time, so a naive
+rebuild-per-admission re-derives the whole collection once per record.
+
+`replayQueue.ts` runs one replay at a time per collection and coalesces every
+request arriving during a run into a single follow-up. That is safe because a
+replay derives from whatever evidence is stored when it runs, so a later replay
+subsumes an earlier one completely, and a caller always waits for a replay that
+started after its own write. Measured in tests: ten concurrent requests produce
+exactly two runs.
+
+### The derivation differ
+
+`npm run overlay:derivation-diff` replays the projection and then asks the live
+service the same questions the scanning resolver answers, comparing the two.
+The resolver stays authoritative, so a divergence is a bug in the projection
+rather than a difference of opinion about the protocol.
+
+Answers are compared as sets. A lookup formula is a set of output references —
+a reader hydrates each one and re-derives — so order carries no meaning, and the
+old resolver's order depended on whatever order storage happened to return rows
+in, which is not reproducible across a replay. The one place order does matter
+is asserted separately: the first ownership state in a `history` answer must be
+the ad's origin.
+
+It also compares the scoped rebuild an admission performs against the
+whole-namespace one, because `replayCollection` only sees rows the scope
+annotation reached. Without that check, a gate that replays before comparing
+would agree with itself and miss an unannotated row.
+
+On its first run it found a real divergence: `collectionLive` must return the
+collection record even when nothing is display eligible, because an expired
+collection answers with an empty display set rather than an absent collection.
+After that fix it compares 158 answers across 8 collections, 30 ads, and 6
+creators with zero differences.
+
+It connects to Mongo directly, so it cannot run against a CARS node. The
+acceptance gate there is the HTTP suite — `overlay:parity`, which compares
+against the independent public reader, plus `overlay:view-model-diff`,
+`overlay:projection-diff`, and `overlay:shadow`.
 
 ## Ingestion and missing transactions
 
@@ -715,6 +831,28 @@ without submitting anything. Add `--collection=<immutable_outpoint>` to scope
 either a dry run or replay to one collection. The non-dry command is idempotent:
 it polls exact output lookup after each STEAK response before submitting a
 dependent spend.
+
+Two defects in this command were found by rehearsing a full wipe and replay, and
+both would have silently damaged a fresh CARS node.
+
+Collections, mints, and decisions were submitted only when the discovery row
+reported a non-null `height`. GorillaPool reports `height: null` for
+transactions whose proof endpoint returns a perfectly valid BUMP — the same
+behaviour already recorded for Ad #5 — so a confirmed collection was skipped
+entirely and never reached the node. The guards are removed; `provenTransaction`
+already fails closed when no proof exists, and a record that genuinely cannot be
+proven is now reported as `unproven` rather than counted as a failure.
+
+The spend package was assembled with `Beef.mergeBeef`, which folds in serialized
+bytes and drops the merkle paths those transactions carried, so the engine
+refused the package for a missing source transaction. `mergeTransaction` keeps
+each proof attached to its transaction. This is the same lesson the wallet
+repair path already learned and it had not been applied here.
+
+Before those fixes a full replay reported 91 admitted with 2 failures and one
+collection missing. After them, on a wiped database: **98 newly admitted, zero
+already present, zero unproven, zero failures**, matching the discovered
+inventory of 8 collections, 30 mints, and 49 lifecycle transitions exactly.
 
 ### Ownership history from the overlay
 
@@ -904,7 +1042,31 @@ Read OVERLAY.md, README.md, and BRC100_COLLECTION_MATRIX.md completely first,
 then inspect git status. Preserve existing work and keep all three documents
 current. Do not commit, push, or deploy unless explicitly requested.
 
-Verified state as of 2026-08-03, end of session:
+Verified state as of 2026-08-04, end of session:
+
+- The hosted node runs the indexed projection layer, released to CARS as
+  `0.3.0-indexed-projection` and verified live: parity against the independent
+  public reader matched its pre-release baseline exactly at 8 collections and 30
+  ads, and both `overlay:view-model-diff` and `overlay:projection-diff` reported
+  zero divergence across all 8 collections. The in-place migration ran on boot —
+  no wipe, no re-backfill, no chain access.
+- A live browser update and creator approval were published against that node
+  during the session and re-derived correctly through the incremental replay
+  path. `overlay:parity` reported a divergence for that ad, which is correct
+  behaviour and not a fault: the only two transactions the node held that
+  GorillaPool did not were both at zero confirmations. Note that the parity tool
+  cannot distinguish "overlay ahead with unconfirmed writes" from "overlay
+  wrong", so it will report a divergence after any fresh write until the block
+  lands. That is a weakness in the gate, not in the node.
+- The frontend required no change whatsoever for any of this. Every existing
+  query kept its name, input shape, and response shape, and `git status src/`
+  was empty for the whole session.
+- Text limits are capped at 512 characters and 512 UTF-8 bytes on both sides
+  with mirrored conformance suites, staged for release as `0.3.1-text-limits`.
+- 263 application tests, 68 backend tests, typecheck, production build, script
+  self-test, and a 158-answer derivation diff all pass.
+
+Earlier verified state, retained because it is still true:
 
 - The CARS shadow node is live at
   `https://backend.93913ed6b421f18f80e669c61239a690.projects.babbage.systems`,
@@ -988,8 +1150,6 @@ Verified state as of 2026-08-03, end of session:
   through reconciliation. The node is therefore a verified store with a trusted
   discovery feed rather than an independent one, and any claim made for it
   should say so.
-- 258 application tests, 36 backend tests, typecheck, script self-test, and the
-  production build all pass.
 - A complete image lifecycle passes on current code: mint, listing, purchase,
   owner update, and creator approval, including 126 KB BEEF submissions.
 - Untested: proof upgrade for records ingested while unconfirmed, any image
@@ -998,6 +1158,27 @@ Verified state as of 2026-08-03, end of session:
   so a bisect through it could hit a commit that does not compile.
 
 Implement the next phase:
+
+The highest-leverage remaining item is **third-party reads**. Embeds, the
+derived JSON reader, and agents still fetch content hosts, so every consumer who
+is not using this application still sees the one-block image window and gets no
+verification. `public/adinals-embed.js` is 267 lines and contains no reference
+to the overlay at all — it fetches one JSON endpoint and renders what it is
+told.
+
+Measured, this is format-dependent and the design follows from the numbers. A
+whole text collection is 24 KB gzipped on the wire, so a text embed should read
+the overlay only. An image collection is 577 KB gzipped, and one image ad via
+`adCurrent` is about the same, so an image embed must not pull BEEF by default.
+The fallback direction is therefore the opposite of the application's: the embed
+should read the content host first and fall back to overlay evidence when the
+host 404s, because an ad is unconfirmed for one block and confirmed for the rest
+of its life. That closes the window exactly where it exists without making
+anyone's page heavier. An image served by a content host remains unverified,
+because version 3 has no hash separate from the inscription — that is a
+hash-reference record version's problem, not something to solve now.
+
+The remaining items below are unchanged.
 
 Reads have moved. Discovery, every collection and ad view, image creatives, and
 the public half of ownership history all come from the overlay, with the
@@ -1013,10 +1194,11 @@ taking it:
    exact outpoint. That poll existed to tell the interface when a record became
    visible to the path it read from; now that reads have moved, it can become a
    fire-and-forget txid.
-3. **Resolver indexing.** `findAllRecords` is scanned once per collection per
-   visit, which is load-bearing now that discovery reads every collection.
-   Replace it with queries by collection and ad origin, and retain resolved
-   current state alongside the evidence. This changes nothing a reader receives.
+3. **Resolver indexing — done.** Replaced by the derived projection described
+   under "Derived state": queries by collection and ad origin, resolved current
+   state retained alongside the evidence, and a differ proving readers receive
+   identical answers. 18.8x server-local; the per-collection cost no longer
+   grows with the namespace.
 4. **Proof upgrade.** Records ingested while unconfirmed hold proof-less BEEF,
    so the node proves ancestry and signatures but not inclusion for its newest
    records. Until this lands, "verified" is the accurate word rather than
@@ -1049,6 +1231,57 @@ Do not clear local-data unless a clean rebuild of the disposable overlay is
 genuinely required. Do not include generated keys, database state, wallet-local
 references, or unbroadcast Atomic BEEF in a public commit.
 ```
+
+## Creative text lives in MAP, and that is the wrong place
+
+A version 3 text record puts its creative in `map.adText` and inscribes only the
+record's *name* as content. `adinalRecords.ts` defaults the inscription to
+`map.name` when no explicit content is supplied, and only the image path supplies
+any. So a text ad on a public explorer shows `size 5`, `type text/plain`, and a
+content hash over the name rather than the creative.
+
+This is not a security problem — `adText` is inside the SIGMA-signed bytes and
+cannot be tampered with. It is a structural one, with three consequences. Generic
+ordinals tooling, content hosts, and marketplaces display the name instead of the
+ad. The content hash attests to the wrong thing. And text and image records have
+two different architectures, with two validation paths, where the image one is
+correct.
+
+It also explains something that looked like a win: text ads never had a
+one-block content-host window, because the content host never held the creative
+in the first place.
+
+A MAP value is a single script pushdata. 520 bytes was the maximum script element
+size before Genesis; Genesis lifted it, so nothing here is a consensus limit.
+It is a compatibility boundary — tooling written against the old rule is
+widespread, and an indexer that truncates an oversized attribute fails silently
+rather than loudly. Verified by round trip: values of 16 through 100,000 bytes
+all serialize and parse correctly through this stack, using OP_PUSHDATA1/2/4 as
+appropriate, so the ceiling is entirely about what third parties assume.
+
+`ADINALS_TEXT_MAX_CHARS` and `ADINALS_TEXT_MAX_BYTES` are both 512, declared in
+`backend/src/protocol/recordEnvelope.ts` and `src/protocol/records.ts`, and they
+must match. Both are enforced because they come apart: 200 emoji is 200
+characters and 800 bytes, inside the character cap and outside what the script
+carries compatibly. Mirrored conformance suites in `textLimits.test.ts` on both
+sides fail if the two copies ever diverge, so a browser cannot write a record its
+own overlay would refuse.
+
+The cap refuses nothing that exists. The longest text ever minted in the
+production namespace is 16 characters, and the only `adMaxChars` values in use
+are 7 and 16.
+
+The real fix belongs to a future record version: inscribe the creative as
+content for both formats, exactly as images already do, and let MAP carry
+attributes only. Then the content hash means something, one code path replaces
+two, and text size becomes a cost question at roughly 100 satoshis per kilobyte
+rather than a compatibility one. Existing version 3 records stay valid and a
+reader branches on `protocolVersion`.
+
+Worth noting for that decision: the attraction of text records is that they are
+small, not that they are text. A book-length inscription has the same egress
+profile as an image of the same size, since the overlay serves the evidence and
+the evidence is the content.
 
 ## Image records
 
@@ -1164,14 +1397,22 @@ text collections now answer in 776 to 895 milliseconds. That is slow enough to
 want a loading state and fast enough to render from, which the per-ad pattern
 was not.
 
-Two levers remain if it needs to be faster. Image-heavy collections are
-dominated by creative bytes, which is the transfer a content host would
-otherwise perform, so the only real saving there is a hash-reference record
-version. Text collections are dominated by server work rather than transfer: the
-resolver calls `findAllRecords` and resolves in memory on every request, so it
-scans everything the node holds instead of querying by collection. Indexing that
-path is the next meaningful gain, and it grows more important as the namespace
-does.
+Two levers were identified. Image-heavy collections are dominated by creative
+bytes, which is the transfer a content host would otherwise perform, so the only
+real saving there is a hash-reference record version. Text collections were
+dominated by server work rather than transfer: the resolver called
+`findAllRecords` and resolved in memory on every request, scanning everything
+the node held to answer a question about one collection.
+
+That second lever is now pulled — see "Derived state" below. Measured
+server-local against the full namespace, a whole-namespace read fell from 537.7
+to 30.9 milliseconds, an 18.8x improvement, and the per-collection cost no
+longer grows as other people mint. Against the hosted node the gain is smaller,
+roughly 10 to 25 per cent, because a round trip to CARS is dominated by network
+latency and payload transfer rather than by database work: the six-ad collection
+went from 1,366 to 1,227 milliseconds, Billboards from 2,321 to 2,001, and a
+five-ad collection from 567 to 430. The structural change matters more than
+either figure — the old path degraded with namespace size and this one does not.
 
 `npm run overlay:projection-diff` compares the two paths against each other
 rather than against a public reader, so a stale node cannot mask a difference.
@@ -1223,13 +1464,13 @@ optimise something that costs nothing, and would forfeit the property the
 overlay exists for: a client that cannot check an answer is trusting a service
 again, merely a different one.
 
-Storing more coherently is worth doing, for the server rather than the wire. The
-resolver calls `findAllRecords` and derives in memory on every request, so it
-scans everything the node holds to answer a question about one collection. That
-is invisible at a hundred records and linear as the namespace grows. Indexing by
-collection origin and ad origin, and retaining the resolved current state
-alongside the evidence, would cut that without changing a single byte of what a
-reader receives.
+Storing more coherently was worth doing, for the server rather than the wire.
+The resolver called `findAllRecords` and derived in memory on every request, so
+it scanned everything the node held to answer a question about one collection.
+That is invisible at a hundred records and linear as the namespace grows.
+Indexing by collection origin and ad origin, and retaining the resolved current
+state alongside the evidence, cut that without changing a single byte of what a
+reader receives — which is exactly what the derivation differ proves.
 
 The rule that follows: derive on write, serve evidence on read. A hint alongside
 the evidence is acceptable only if the client verifies it against that evidence,
@@ -1569,14 +1810,43 @@ test rather than a live mainnet vector. Every other transition type is proven
 against real transactions, and the confirmed replay reports zero failures and no
 unresolved spend links.
 
-One observation from that inventory: the optional `lifecycleKind`,
-`predecessorOutpoint` storage annotations are never populated, because
-`classifyLifecycleTransition` runs at admission against the admitted
-transaction's own BEEF. Ownership epochs, listings, purchases, and updates are
-still derived correctly at query time, which is what the passing parity runs
-verify, but the stored rows cannot be filtered by transition kind without
-re-deriving. This is a storage-annotation gap, not an admission or resolution
-defect.
+One observation from that inventory: the optional `lifecycleKind` and
+`predecessorOutpoint` storage annotations were never populated. That was
+originally read as a storage-annotation gap. It was structural, and the cause is
+worth recording because it is not obvious.
+
+`classifyLifecycleTransition` reads the predecessor's locking script out of
+`input.sourceTransaction`. The Topic Manager repairs that link itself before it
+validates, pulling the source transaction from the submitted BEEF package. The
+atomic BEEF the engine then hands the lookup service is subject scoped: once a
+transaction carries its own merkle proof, the SDK's serializer drops its inputs'
+source transactions as redundant. Surveyed across every stored record, 93 of 93
+carried `sourceTXID` and 1 of 93 carried `sourceTransaction` — and that one was
+the only record without a block proof. So the classifier could never fire for a
+confirmed record, and no amount of re-admission would have changed it.
+
+`backend/src/lookup-services/admissionClassification.ts` classifies against the
+predecessor's own stored row instead. Every fact it needs is already there from
+that output's admission: whether it was a listing, its seller and price, its
+retained OrdLock payout script and suffix, and the prior owner. Everything else
+comes from the current transaction, which needs no ancestry — input 0's outpoint
+and unlocking script, output 0's locking script, and output 1's envelope. This
+is safe because admission is fail closed and ordered: the Topic Manager refuses
+a topical spend whose predecessor is absent, so the row is guaranteed to exist.
+
+It annotates rather than admits. Admission has already happened upstream, and
+every reader still verifies the evidence it receives.
+
+Listings additionally retain their decoded OrdLock `payoutScript` and `suffix`,
+because a later spend cannot otherwise be told apart as a purchase or a
+cancellation without the predecessor's script. A listing missing those retained
+terms is refused rather than guessed.
+
+`annotationBackfill.ts` repairs rows admitted before the annotation existed.
+`storeOutput` upserts with `$setOnInsert`, so an already-present row never gains
+a field by being re-submitted and the repair has to be an explicit `$set` pass,
+ordered predecessors first. Against the retained 93-record database it annotated
+93 of 93 with zero unresolved, and a second pass annotated zero.
 
 ## CARS shadow preparation
 

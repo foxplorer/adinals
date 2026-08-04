@@ -8,6 +8,26 @@ export const ADINALS_IMAGE_PROFILE = 'image-2x1-v1'
 export const ADINALS_URL_MAX_LENGTH = 2_048
 export const ADINALS_URL_WRITE_MAX_BYTES = 512
 
+/**
+ * Ceiling on creative text carried in MAP. Must match
+ * `backend/src/protocol/recordEnvelope.ts` exactly — a browser that writes a
+ * record the overlay will refuse is worse than one that refuses it first.
+ *
+ * A MAP value is a single script pushdata, and 520 bytes was the pre-Genesis
+ * maximum script element size. Genesis lifted it, so this is a compatibility
+ * limit rather than a consensus one: tooling built against the old rule is
+ * widespread and truncates silently.
+ *
+ * Creative content belongs in the inscription, where size is a cost question
+ * instead — the image path already works that way. This is the guard rail
+ * until a record version moves text there too.
+ */
+export const ADINALS_TEXT_MAX_CHARS = 512
+export const ADINALS_TEXT_MAX_BYTES = 512
+
+export const adTextByteLength = (value: string): number =>
+  new TextEncoder().encode(value).length
+
 export const ADINALS_SUB_TYPE = {
   collection: 'collection',
   ad: 'collectionItem',

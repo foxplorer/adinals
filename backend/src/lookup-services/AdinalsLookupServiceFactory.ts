@@ -387,7 +387,7 @@ export class AdinalsLookupService implements LookupService {
       shortDescription: 'Retains complete Adinals lifecycle history',
       // Bumped so a deployed node identifies itself over HTTP. Without this a
       // release cannot be confirmed as live from outside the container.
-      version: '0.3.0-indexed-projection',
+      version: '0.3.1-text-limits',
       informationURL: 'https://adinals.com/protocol'
     }
   }

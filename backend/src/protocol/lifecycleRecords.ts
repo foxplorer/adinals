@@ -1,6 +1,11 @@
 import { Script, type Transaction } from '@bsv/sdk'
 import type { AdinalsRecordEnvelope } from './recordEnvelope.js'
-import { inspectAdinalsTransactionOutput } from './recordEnvelope.js'
+import {
+  ADINALS_TEXT_MAX_BYTES,
+  ADINALS_TEXT_MAX_CHARS,
+  inspectAdinalsTransactionOutput,
+  utf8Bytes
+} from './recordEnvelope.js'
 import { mintCandidateErrors } from './mintCandidate.js'
 import {
   decodeEmbeddedP2PKH,
@@ -59,7 +64,17 @@ const creativeErrors = (record: AdinalsRecordEnvelope): string[] => {
     return ['invalid ad format']
   }
   if (!validUrl(map.adUrl)) errors.push('invalid destination URL')
-  if (map.adFormat === 'text' && !map.adText?.trim()) errors.push('empty ad text')
+  if (map.adFormat === 'text') {
+    if (!map.adText?.trim()) errors.push('empty ad text')
+    // Same ceiling as a mint: an update must stay inside what MAP carries
+    // compatibly, or an owner could publish a creative no reader can resolve.
+    if (utf8Bytes(map.adText ?? '') > ADINALS_TEXT_MAX_BYTES) {
+      errors.push('ad text exceeds protocol byte limit')
+    }
+    if ([...(map.adText ?? '')].length > ADINALS_TEXT_MAX_CHARS) {
+      errors.push('ad text exceeds protocol character limit')
+    }
+  }
   if (map.adFormat === 'image') {
     const detected = detectedImageType(record.content)
     if (!IMAGE_TYPES.includes(record.contentType as typeof IMAGE_TYPES[number])) {

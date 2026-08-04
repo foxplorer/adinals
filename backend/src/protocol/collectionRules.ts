@@ -1,4 +1,4 @@
-import type { AdinalsRecordEnvelope } from './recordEnvelope.js'
+import { ADINALS_TEXT_MAX_CHARS, type AdinalsRecordEnvelope } from './recordEnvelope.js'
 
 const positiveDecimal = (value: unknown): number | null => {
   if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) return null
@@ -50,8 +50,14 @@ export const collectionRecordErrors = (
   if (!subTypeData || typeof subTypeData.description !== 'string') {
     errors.push('description must be a string')
   }
-  if (map.adFormat === 'text' && positiveDecimal(map.adMaxChars) === null) {
-    errors.push('invalid maximum text length')
+  if (map.adFormat === 'text') {
+    const declared = positiveDecimal(map.adMaxChars)
+    if (declared === null) errors.push('invalid maximum text length')
+    // A collection may not promise more text than a MAP value can carry
+    // compatibly, or its mints would be unadmittable after the fact.
+    else if (declared > ADINALS_TEXT_MAX_CHARS) {
+      errors.push('maximum text length exceeds protocol limit')
+    }
   }
   if (
     map.adFormat === 'image' &&

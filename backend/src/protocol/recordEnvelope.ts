@@ -14,6 +14,30 @@ const MAP_PREFIX = '1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5'
 
 export const ADINALS_APP = 'adinals' as const
 export const ADINALS_PROTOCOL_VERSION = '3' as const
+
+/**
+ * Ceiling on creative text carried in MAP.
+ *
+ * A MAP value is a single script pushdata. 520 bytes was the maximum script
+ * element size before Genesis; Genesis lifted it, so this is not a consensus
+ * limit. It is a compatibility one: tooling written against the old rule is
+ * widespread, and an indexer or explorer that truncates an oversized attribute
+ * fails silently rather than loudly.
+ *
+ * The deeper point is that MAP is an attribute protocol and creative content
+ * belongs in the inscription, where size is a cost question rather than a
+ * compatibility one — the image path already works that way. This cap is the
+ * guard rail until a record version moves text there too. Nothing in the
+ * production namespace approaches it; the longest text minted is 16 characters.
+ *
+ * Byte length is what the script actually carries, so it is checked alongside
+ * the character count a creator reasons in.
+ */
+export const ADINALS_TEXT_MAX_CHARS = 512
+export const ADINALS_TEXT_MAX_BYTES = 512
+
+export const utf8Bytes = (value: string): number =>
+  new TextEncoder().encode(value).length
 export const ADINALS_RECORD_SUBTYPES = [
   'collection',
   'collectionItem',

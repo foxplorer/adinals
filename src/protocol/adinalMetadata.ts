@@ -1,4 +1,9 @@
 import { ADINALS_NAMESPACE } from '../config/environment.ts'
+import {
+  ADINALS_TEXT_MAX_BYTES,
+  ADINALS_TEXT_MAX_CHARS,
+  adTextByteLength,
+} from './records.ts'
 
 export type AdinalsRecordMap = Record<string, string> & {
   app: string
@@ -35,6 +40,13 @@ export function buildAdinalMintMap(input: CreateAdinalInput): AdinalsRecordMap {
   if (input.format === 'text') {
     if (!text) throw new Error('A text ad needs creative text.')
     if (input.maxChars && [...text].length > input.maxChars) throw new Error(`Ad exceeds its ${input.maxChars}-character limit.`)
+    // Refuse here rather than let the overlay refuse the broadcast record.
+    if ([...text].length > ADINALS_TEXT_MAX_CHARS) {
+      throw new Error(`Ad text must be ${ADINALS_TEXT_MAX_CHARS.toLocaleString()} characters or fewer.`)
+    }
+    if (adTextByteLength(text) > ADINALS_TEXT_MAX_BYTES) {
+      throw new Error(`Ad text must be ${ADINALS_TEXT_MAX_BYTES.toLocaleString()} UTF-8 bytes or fewer.`)
+    }
   }
   if (input.format === 'image' && (!input.image?.data.length || !input.image.type.trim())) throw new Error('An image ad needs image bytes and a content type.')
   const url = input.url?.trim() ?? ''
