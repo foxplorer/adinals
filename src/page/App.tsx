@@ -904,7 +904,11 @@ export function AdLab() {
   // Every reference load reopens the question of which reader owns the view, so
   // the overlay read repeats after one rather than being silently overwritten.
   const [loadRevision, setLoadRevision] = useState(0)
-  const [collectionScope, setCollectionScope] = useState<CollectionScope>('all')
+  // A first visit opens on the curated view rather than the whole namespace.
+  // "Featured" is a checkable claim — signed by a recognized creator address —
+  // not editorial taste, and the full listing stays one tab away so the open
+  // protocol remains verifiable rather than merely asserted.
+  const [collectionScope, setCollectionScope] = useState<CollectionScope>('featured')
   const [showExpiredCollections, setShowExpiredCollections] = useState(false)
 
   const [draft, setDraft] = useState({
