@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/**/*.test.js\""
+    "test": "tsc -p tsconfig.test.json && node --test \"dist-test/**/*.test.js\"",
+    "diff:derivation": "tsc -p tsconfig.test.json && node dist-test/tools/derivationDiff.js"
   },
   "dependencies": {
     "@bsv/overlay": "^2.2.7",

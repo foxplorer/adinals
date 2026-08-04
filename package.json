@@ -28,6 +28,7 @@
     "overlay:cars:config": "cars config ls",
     "overlay:cars:build": "cars build adinals-shadow",
     "overlay:test": "npm test --prefix backend",
+    "overlay:derivation-diff": "npm run diff:derivation --prefix backend",
     "overlay:typecheck": "npm run typecheck --prefix backend",
     "preview": "vite preview --host 0.0.0.0 --port 4176 --strictPort"
   },

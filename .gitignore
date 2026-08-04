@@ -42,3 +42,7 @@ cars_artifact_*.tgz
 adinals-collection-*.json
 tests/fixtures/collections/*.json
 !tests/fixtures/collections/published-mainnet-yours-446af364.json
+
+# Private working notes. Not for the public repository — this repo's origin
+# is public. Keep it in the working tree next to the code it describes.
+IDEA_ENGINE.md

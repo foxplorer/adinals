@@ -193,9 +193,14 @@ const waitForOutput = async (origin: string): Promise<void> => {
 const packaged = async (txid: string, predecessorTxid?: string): Promise<number[]> => {
   const current = await provenTransaction(txid)
   if (!predecessorTxid) return current.toBEEF()
+  // `mergeBeef` folds in serialized bytes and drops the merkle paths those
+  // transactions carried, so the engine then refuses the package for a missing
+  // source transaction. `mergeTransaction` keeps each proof attached to its
+  // transaction. This is the same lesson the wallet repair path already
+  // learned: a proof survives only if the thing carrying it is merged whole.
   const beef = new Beef()
-  beef.mergeBeef((await provenTransaction(predecessorTxid)).toBEEF())
-  beef.mergeBeef(current.toBEEF())
+  beef.mergeTransaction(await provenTransaction(predecessorTxid))
+  beef.mergeTransaction(current)
   if (!beef.isValid()) throw new Error(`combined BEEF is invalid: ${txid}`)
   return beef.toBinary()
 }
@@ -203,6 +208,13 @@ const packaged = async (txid: string, predecessorTxid?: string): Promise<number[
 let newlyAdmitted = 0
 let alreadyPresent = 0
 const failures: Array<{ txid: string; error: string }> = []
+/**
+ * A record the chain has confirmed but no proof is available for yet. This is
+ * not a failure: the confirmed-only backfill correctly declines to submit
+ * evidence it cannot anchor, and a later run picks the record up.
+ */
+const unproven: Array<{ txid: string; reason: string }> = []
+const proofUnavailable = /proof (request|identity) failed/
 const submitOne = async (
   txid: string,
   expectedOutpoints: string[],
@@ -214,20 +226,22 @@ const submitOne = async (
     else alreadyPresent += 1
     for (const origin of expectedOutpoints) await waitForOutput(origin)
   } catch (error) {
-    failures.push({
-      txid,
-      error: error instanceof Error ? error.message : String(error)
-    })
+    const message = error instanceof Error ? error.message : String(error)
+    if (proofUnavailable.test(message)) {
+      unproven.push({ txid, reason: message })
+      return
+    }
+    failures.push({ txid, error: message })
   }
 }
 
 for (const collection of collectionRows) {
   const origin = normalizedOutpoint(collection.origin)
-  if (collection.height !== null) await submitOne(outpointTxid(origin), [origin])
+  await submitOne(outpointTxid(origin), [origin])
 }
 for (const mint of mintRows) {
   const origin = normalizedOutpoint(mint.origin)
-  if (mint.height !== null) await submitOne(outpointTxid(origin), [origin])
+  await submitOne(outpointTxid(origin), [origin])
 }
 for (const transition of transitions) {
   const expected = [`${transition.txid}_0`]
@@ -236,7 +250,7 @@ for (const transition of transitions) {
 }
 for (const decision of decisionRows) {
   const origin = normalizedOutpoint(decision.origin)
-  if (decision.height !== null) await submitOne(outpointTxid(origin), [origin])
+  await submitOne(outpointTxid(origin), [origin])
 }
 
 const result = {
@@ -244,6 +258,7 @@ const result = {
   ...discovery,
   newlyAdmitted,
   alreadyPresent,
+  unproven,
   failures
 }
 console.log(JSON.stringify(result))
