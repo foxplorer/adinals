@@ -244,6 +244,42 @@ identity rather than by knowing the project's name. Generated server keys, ARC
 credentials, database state under `local-data/`, shadow reports, and every other
 `.env` file stay out of Git.
 
+## Running your own instance
+
+This software is offered as-is under the MIT License. If you run it, the
+following are yours rather than the author's.
+
+**Moderation is entirely the operator's.** Adinals displays user-created
+on-chain content, which is true of every ordinals wallet, marketplace, and
+explorer. Records are permanent and cannot be unpublished: creator approval
+gates what becomes *display eligible*, and nothing removes anything from the
+chain. An operator who opens minting or updates to third parties inherits
+whatever they publish, including destination URLs that may change after they
+were approved. Decide deliberately whether your collections use
+`adApproval: creator`, and whether their content carries links at all.
+
+**Signing keys are the operator's own.** A version 3 mint is signed by the
+collection creator, so collections you create are signed by your key alone. The
+author of this software signs nothing on your behalf, and running this code does
+not associate your records with the author's collections or address.
+
+**No support is implied.** There is no obligation to answer issues, accept
+contributions, maintain compatibility, or keep any interface stable between
+versions.
+
+**The public node is not infrastructure you can rely on.** The overlay endpoint
+referenced in this repository is operated and funded by the author for the
+author's own applications. It carries no availability commitment and may change
+or stop without notice. An application that needs a node should run its own —
+the overlay is rebuildable from confirmed public transactions, which is what
+makes that practical.
+
+**The protocol is not the application.** Version 3 records are on chain and
+readable by anyone. Nothing here grants exclusive use of them, and nothing
+prevents another reader from resolving them differently. Display rules,
+including which collections a given interface chooses to show, are a property of
+that interface rather than of the protocol.
+
 ## License
 
 The repository's software and documentation are available under the
