@@ -68,13 +68,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     try {
       const [network, height, basketInspection] = await Promise.all([
         walletRef.current.getNetwork({}),
-        walletRef.current.getHeight({}),
+        // Reported, not depended on. See `inspectWallet`.
+        walletRef.current.getHeight({}).then((result) => result.height).catch(() => null),
         inspectOrdinalBasket(walletRef.current, session.basket),
       ])
       setSession((current) => current && ({
         ...current,
         network: network.network,
-        height: height.height,
+        height,
         basket: basketInspection?.basket ?? null,
         ordinalCount: basketInspection?.totalOutputs ?? null,
       }))

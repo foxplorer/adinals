@@ -18,7 +18,8 @@ export type ConnectedWallet = {
   wallet: WalletInterface
   version: string
   network: 'mainnet' | 'testnet'
-  height: number
+  /** Null when the wallet's chain tracker could not answer. */
+  height: number | null
   identityKey: string
   basket: AdinalsBasket | null
   ordinalCount: number | null
@@ -37,9 +38,18 @@ export async function inspectWallet(
   const authentication = await wallet.isAuthenticated({}) as { authenticated: boolean }
   if (!authentication.authenticated) await wallet.waitForAuthentication({})
 
-  const [{ network }, { height }, { publicKey }] = await Promise.all([
+  const [{ network }, height, { publicKey }] = await Promise.all([
     wallet.getNetwork({}),
-    wallet.getHeight({}),
+    // Chain height is reported here, never depended on: nothing this
+    // application signs, verifies, or publishes consults it. A wallet whose
+    // chain tracker is misconfigured — MetaNet Desktop answers "at least one
+    // bulk ingestor must implement getPresentHeight" — still holds the keys and
+    // still signs, so refusing the whole connection would lock a visitor out of
+    // their own wallet over a status line.
+    wallet.getHeight({}).then((result) => result.height).catch((error: unknown) => {
+      console.warn('Wallet chain height unavailable; connecting without it', error)
+      return null
+    }),
     wallet.getPublicKey({ identityKey: true }),
   ])
 

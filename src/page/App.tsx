@@ -21,6 +21,7 @@ import {
   type MarketEvent,
   type Row,
 } from '../readers/productCatalog'
+import { overlayHeadsWithSuccessors } from '../readers/overlayStaleness.ts'
 import { isFoxplorerCreator } from '../curation'
 import {
   collectionFromProtocolRow,
@@ -217,6 +218,8 @@ const PROOF_RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000] as const
  * than a live feed. It runs only while unconfirmed state is on screen.
  */
 const CONFIRMATION_POLL_MS = 120_000
+/** The shortest gap between two proof-driven overlay repairs in one session. */
+const OVERLAY_REPAIR_FLOOR_MS = 5 * 60_000
 /** Lets the rendered view settle before the background overlay comparison runs. */
 const OVERLAY_SHADOW_READ_DELAY_MS = 1_500
 
@@ -1211,6 +1214,10 @@ export function AdLab() {
   // Whether the whole model on screen came from the overlay. When it did, every
   // collection is already hydrated and opening one needs no further read.
   const [namespaceSource, setNamespaceSource] = useState<'overlay' | 'reference'>('reference')
+  // Ad origins whose overlay state the chain has already spent past. While any
+  // exist, no overlay read may replace what the public reader produced.
+  const [overlayBehindOrigins, setOverlayBehindOrigins] = useState<string[]>([])
+  const overlayRepairAt = useRef(0)
   // Every reference load reopens the question of which reader owns the view, so
   // the overlay read repeats after one rather than being silently overwritten.
   const [loadRevision, setLoadRevision] = useState(0)
@@ -1288,17 +1295,40 @@ export function AdLab() {
       })
       if (namespace?.status === 'rendered' && namespace.namespace) {
         const { collections: overlayCollections, ads: overlayAds } = namespace.namespace
-        setCollections(overlayCollections)
-        setAds((current) => preservePendingAdState(overlayAds, current))
-        setOverlayReadStatus(Object.fromEntries(
-          overlayCollections.map((item) => [item.origin, 'rendered' as const]),
-        ))
-        setNamespaceSource('overlay')
-        console.info(
-          `Overlay namespace read rendered ${overlayCollections.length} collection(s)`
-          + ` and ${overlayAds.length} ad(s) in ${namespace.durationMs}ms`,
+        // A node renders what was delivered to it. One submission that never
+        // landed — a purchase from another wallet, an update made in another
+        // browser — leaves an ad frozen at a state the chain has already spent,
+        // which reads as "still for sale" to the person who just bought it.
+        // Ask the indexer whether any rendered head has a successor; only that
+        // proves the node is behind rather than merely ahead.
+        const behind = await readRecords('ad')
+          .then((rows) => overlayHeadsWithSuccessors(overlayAds, rows))
+          .catch((error: unknown) => {
+            // An indexer outage is not evidence about the overlay. Render what
+            // the node returned rather than blanking the page over it.
+            console.warn('Overlay staleness check unavailable; rendering the overlay namespace', error)
+            return [] as string[]
+          })
+        setOverlayBehindOrigins(behind)
+        if (behind.length === 0) {
+          setCollections(overlayCollections)
+          setAds((current) => preservePendingAdState(overlayAds, current))
+          setOverlayReadStatus(Object.fromEntries(
+            overlayCollections.map((item) => [item.origin, 'rendered' as const]),
+          ))
+          setNamespaceSource('overlay')
+          console.info(
+            `Overlay namespace read rendered ${overlayCollections.length} collection(s)`
+            + ` and ${overlayAds.length} ad(s) in ${namespace.durationMs}ms`,
+          )
+          return
+        }
+        console.warn(
+          `Overlay namespace is behind the public chain for ${behind.length} ad(s);`
+          + ' rendering from the public reader and offering the node what it is missing',
+          behind,
         )
-        return
+        setOverlayReadStatus({})
       }
       if (namespace && namespace.status !== 'disabled') {
         console.warn(
@@ -1601,8 +1631,12 @@ export function AdLab() {
    */
   useEffect(() => {
     // Reading the namespace from the overlay already hydrated every collection,
-    // so opening one would only ask the same question twice.
+    // so opening one would only ask the same question twice. A node the chain
+    // has moved past is skipped entirely: replacing the reader's ads with its
+    // answer would reinstate exactly the stale state the namespace read
+    // rejected.
     if (!selected || !ADINALS_OVERLAY_URL || namespaceSource === 'overlay') return
+    if (overlayBehindOrigins.length) return
     let cancelled = false
     setOverlayReadPending(selected)
     void runOverlayCollectionRead(selected).then((result) => {
@@ -1651,6 +1685,22 @@ export function AdLab() {
     if (!wallet || !session?.identityKey) return
     void repairOverlayFromBasketsOnce(wallet, session.identityKey)
   }, [wallet, session?.identityKey])
+  /**
+   * The same repair, run on proof rather than on a schedule.
+   *
+   * The daily interval exists so a wallet that has nothing to offer does not
+   * spend a round trip per output learning that on every page load. Once the
+   * chain has shown the node to be missing a record this wallet can supply,
+   * that reasoning no longer applies, so the interval is overridden — floored
+   * so a node that stays behind cannot turn every reload into a repair.
+   */
+  useEffect(() => {
+    if (!overlayBehindOrigins.length || !wallet || !session?.identityKey) return
+    const now = Date.now()
+    if (now - overlayRepairAt.current < OVERLAY_REPAIR_FLOOR_MS) return
+    overlayRepairAt.current = now
+    void repairOverlayFromBasketsOnce(wallet, session.identityKey, { intervalMs: 0 })
+  }, [overlayBehindOrigins, wallet, session?.identityKey])
   // Stage one of overlay reads: compare the configured overlay against the
   // rendered public reader in the background and retain the result. Nothing
   // here feeds the view, so an unavailable overlay changes nothing on screen.
@@ -2203,7 +2253,12 @@ export function AdLab() {
                     <div>
                       <span className="adlab-kicker">BRC-100 wallet</span>
                       <strong>Wallet connected</strong>
-                      <p>{session?.network} · block {session?.height.toLocaleString()}</p>
+                      <p>
+                        {session?.network} · block{' '}
+                        {session?.height === null || session?.height === undefined
+                          ? 'height unavailable from this wallet'
+                          : session.height.toLocaleString()}
+                      </p>
                     </div>
                   </div>
                   <div className="adlab-wallet-actions">

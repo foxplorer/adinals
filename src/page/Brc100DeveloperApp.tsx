@@ -81,7 +81,10 @@ function WalletPanel() {
               <span className="adlab-kicker">BRC-100 wallet</span>
               <strong>Wallet connected</strong>
               <p>
-                {session.network} · block {session.height.toLocaleString()}
+                {session.network} · block{' '}
+                {session.height === null
+                  ? 'height unavailable from this wallet'
+                  : session.height.toLocaleString()}
               </p>
             </div>
           </div>
