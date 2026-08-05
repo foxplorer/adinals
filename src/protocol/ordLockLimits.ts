@@ -5,3 +5,12 @@
  * remaining a narrow fee estimate rather than an unbounded placeholder.
  */
 export const ORDLOCK_PURCHASE_UNLOCKING_SCRIPT_MAX = 4_096
+
+/**
+ * The cancel branch pushes a signature, a public key, and the branch selector.
+ * A DER signature can reach 72 bytes, plus its sighash byte and push opcode
+ * (74), the 33-byte compressed key and its push opcode (34), and `OP_1` (1).
+ * The template's own estimate of 108 assumes the common 71-byte signature and
+ * under-reserves the worst case by one byte.
+ */
+export const ORDLOCK_CANCEL_UNLOCKING_SCRIPT_MAX = 109

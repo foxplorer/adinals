@@ -22,7 +22,10 @@ import {
   type RecordContent,
   type UpdateAdinalInput,
 } from '../protocol/adinalRecords.ts'
-import { ORDLOCK_PURCHASE_UNLOCKING_SCRIPT_MAX } from '../protocol/ordLockLimits.ts'
+import {
+  ORDLOCK_CANCEL_UNLOCKING_SCRIPT_MAX,
+  ORDLOCK_PURCHASE_UNLOCKING_SCRIPT_MAX,
+} from '../protocol/ordLockLimits.ts'
 import {
   appendWalletSigma,
   COLLECTION_VERIFIER_REVISION,
@@ -31,6 +34,7 @@ import {
 import {
   createAndCompleteNoSendAction,
   signDerivedP2PKHInput,
+  signOrdLockCancelInput,
 } from '../wallet/actionSigning.ts'
 import { calculateSigmaAnchorReserve } from './sigmaAnchorReserve.ts'
 import { findAnchorInputIndex, findAnchorOutputIndex } from './anchorOutput.ts'
@@ -357,10 +361,13 @@ export async function listAdinal(
  * Withdraws an ad from sale.
  *
  * OrdLock's cancel path is a signature by the cancel address, which under
- * BRC-100 is a wallet-derived key rather than a stored one. The template's
- * `cancelWithWallet` signs through `createSignature`, so the seller's private
- * key is never exposed, and `estimateLength` sizes the input exactly instead
- * of reserving a guessed upper bound.
+ * BRC-100 is a wallet-derived key rather than a stored one. Signing goes
+ * through `createSignature`, so the seller's private key is never exposed.
+ *
+ * The signature is built here rather than by `OrdLock.cancelWithWallet`, which
+ * sends the sighash preimage as `data` next to `hashToDirectlySign` and so
+ * fails against any wallet that treats `data` as the message to sign. See
+ * `signOrdLockCancelInput`.
  */
 export async function cancelAdinalListing(
   wallet: WalletInterface,
@@ -378,8 +385,6 @@ export async function cancelAdinalListing(
   const ownerAddress = PublicKey.fromString(ownerPublicKey).toAddress()
   if (terms.seller !== ownerAddress) throw new Error('This wallet key cannot cancel that listing.')
 
-  const unlock = OrdLock.cancelWithWallet(wallet, protocolID, input.ownerKeyID, 'self')
-  const unlockingScriptLength = await unlock.estimateLength()
   const returnScript = new P2PKH().lock(ownerAddress)
   const basket = options.basket ?? ADINALS_NAMESPACE.basket
   const createCancellationAction = () => wallet.createAction({
@@ -389,7 +394,7 @@ export async function cancelAdinalListing(
     inputs: [{
       outpoint: source.wallet,
       inputDescription: 'Adinals listing being withdrawn',
-      unlockingScriptLength,
+      unlockingScriptLength: ORDLOCK_CANCEL_UNLOCKING_SCRIPT_MAX,
     }],
     outputs: [{
       lockingScript: returnScript.toHex(), satoshis: 1, outputDescription: 'Adinal returned from sale', basket,
@@ -399,7 +404,7 @@ export async function cancelAdinalListing(
     options: { signAndProcess: false, noSend: true, acceptDelayedBroadcast: true, randomizeOutputs: false },
   })
   const cancellationAttempt = await createAndCompleteNoSendAction(wallet, createCancellationAction, input.atomicBeef, async (transaction) => ({
-    0: { unlockingScript: (await unlock.sign(transaction, 0)).toHex() },
+    0: { unlockingScript: await signOrdLockCancelInput(wallet, transaction, 0, protocolID, input.ownerKeyID) },
   }))
   const created = cancellationAttempt.created
   const completed = cancellationAttempt.completed

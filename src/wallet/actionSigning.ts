@@ -1,6 +1,7 @@
 import {
   Beef,
   Hash,
+  OP,
   Script,
   Spend,
   Transaction,
@@ -96,6 +97,35 @@ export async function signDerivedP2PKHInput(
       TransactionSignature.SIGHASH_ALL | TransactionSignature.SIGHASH_FORKID,
     ])
     .writeBin(Utils.toArray(publicKey, 'hex'))
+    .toHex()
+}
+
+/**
+ * Signs an OrdLock cancellation.
+ *
+ * The cancel branch is an ordinary signature check against the cancel address
+ * followed by the branch selector, so the signature is the one every other
+ * derived spend in this application already produces. `OrdLock.cancelWithWallet`
+ * additionally sends the sighash preimage as `data` alongside
+ * `hashToDirectlySign`. Those two fields are alternatives: a wallet that prefers
+ * `data` signs a single SHA-256 where a Bitcoin sighash needs the double hash,
+ * and the spend then fails at `OP_CHECKSIG` with an untruthy stack even though
+ * the pushed public key is the right one. Sending only the hash keeps this path
+ * on the same convention as minting, updating, and listing.
+ */
+export async function signOrdLockCancelInput(
+  wallet: WalletInterface,
+  transaction: Transaction,
+  inputIndex: number,
+  protocolID: WalletProtocol,
+  keyID: string,
+): Promise<string> {
+  const signed = await signDerivedP2PKHInput(wallet, transaction, inputIndex, protocolID, keyID)
+  // `Script.fromHex` parses lazily, and appending to it drops the bytes it has
+  // not read yet. Concatenating into a fresh script keeps the signature push.
+  return new UnlockingScript()
+    .writeScript(Script.fromHex(signed))
+    .writeOpCode(OP.OP_1)
     .toHex()
 }
 

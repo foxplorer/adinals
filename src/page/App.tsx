@@ -209,6 +209,14 @@ const isUnconfirmedCurrentListing = (ad: Ad): boolean =>
     )
   )
 const PROOF_RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 30_000, 60_000] as const
+/**
+ * How often an open page re-reads while anything on it is still in the mempool.
+ *
+ * Confirmation is the one thing here that changes without anyone touching the
+ * page, and a block is roughly ten minutes away, so this is a slow check rather
+ * than a live feed. It runs only while unconfirmed state is on screen.
+ */
+const CONFIRMATION_POLL_MS = 120_000
 /** Lets the rendered view settle before the background overlay comparison runs. */
 const OVERLAY_SHADOW_READ_DELAY_MS = 1_500
 
@@ -1549,6 +1557,39 @@ export function AdLab() {
   useEffect(() => {
     void load()
   }, [load])
+  /**
+   * A record that was in the mempool when the page read it stays that way on
+   * screen until something reads again. Nothing else here does: the first load
+   * runs on mount, and a listing the visitor just made carries an optimistic
+   * mempool entry that only a later read can replace. That is why a confirmed
+   * listing kept describing itself as unconfirmed marketplace state.
+   *
+   * So poll, but only while unconfirmed state is actually rendered, only while
+   * the tab is visible, and never on top of a write in flight.
+   */
+  const hasUnconfirmedState = useMemo(
+    () => ads.some((ad) =>
+      ad.height === null
+      || ad.indexPending
+      || ad.marketEvents.some((event) => event.height === null)
+      || ad.updates.some((update) => update.height === null)),
+    [ads],
+  )
+  useEffect(() => {
+    if (!hasUnconfirmedState) return
+    const reread = () => {
+      if (document.visibilityState !== 'visible' || writeInFlight.current) return
+      void load()
+    }
+    const timer = window.setInterval(reread, CONFIRMATION_POLL_MS)
+    // A block usually lands while the tab is in the background, so returning to
+    // it is the moment the reported state is most likely to be out of date.
+    document.addEventListener('visibilitychange', reread)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', reread)
+    }
+  }, [hasUnconfirmedState, load])
   /**
    * Stage two of overlay reads: render the open collection from the overlay,
    * or fall back to the reader that just produced it.
