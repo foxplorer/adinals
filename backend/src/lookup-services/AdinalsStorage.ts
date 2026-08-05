@@ -227,12 +227,22 @@ export class AdinalsStorage implements AdinalsStorageLike {
     }
   }
 
+  /**
+   * Admission is write-once except for chain position.
+   *
+   * A record submitted from the mempool is admitted with no block height, and
+   * nothing in the lookup interface reports one later: the engine's merkle
+   * proof handling updates its own storage, not this one. Under a plain
+   * `$setOnInsert` such a row stays unconfirmed forever, and every reader built
+   * on it keeps describing a mined transaction as pending. Position is
+   * therefore the one thing a resubmission may fill in — derived from the
+   * verified BEEF, never overwritten with an absence — so evidence that now
+   * carries a proof upgrades the row it already admitted.
+   */
   async storeOutput(record: AdmittedOutputRecord): Promise<void> {
     await this.outputs.updateOne(
       { txid: record.txid, outputIndex: record.outputIndex },
-      {
-        $setOnInsert: record
-      },
+      outputUpsert(record),
       { upsert: true }
     )
   }
@@ -399,6 +409,29 @@ export class AdinalsStorage implements AdinalsStorageLike {
     return await this.adProjections.countDocuments({
       derivationVersion: { $ne: version }
     })
+  }
+}
+
+/**
+ * The update an admission applies to its row.
+ *
+ * `$setOnInsert` and `$set` must not name the same field, so position is
+ * removed from the admission half and written by the other. On insert `$set`
+ * still applies, so a first admission carrying a proof records its position
+ * exactly as before.
+ */
+export const outputUpsert = (
+  record: AdmittedOutputRecord
+): { $setOnInsert: Omit<AdmittedOutputRecord, 'blockHeight' | 'transactionIndex'>
+  $set?: { blockHeight?: number; transactionIndex?: number } } => {
+  const { blockHeight, transactionIndex, ...admission } = record
+  const position = {
+    ...(blockHeight === undefined ? {} : { blockHeight }),
+    ...(transactionIndex === undefined ? {} : { transactionIndex })
+  }
+  return {
+    $setOnInsert: admission,
+    ...(Object.keys(position).length > 0 && { $set: position })
   }
 }
 

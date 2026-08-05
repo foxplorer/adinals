@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { overlayHeadsWithSuccessors } from './overlayStaleness.ts'
+import { overlayAdsBehindChain } from './overlayStaleness.ts'
 import type { Ad } from './collectionViewModel.ts'
-import type { Row } from './productCatalog.ts'
+import type { MarketEvent, Row } from './productCatalog.ts'
 
 const ad = (origin: string, outpoint: string): Ad => ({
   origin,
@@ -51,7 +51,7 @@ const row = (origin: string, ownershipOutpoints: string[]): Row => ({
 })
 
 test('a listing the indexer has seen sold is reported as behind', () => {
-  const behind = overlayHeadsWithSuccessors(
+  const behind = overlayAdsBehindChain(
     [ad('mint_0', 'listing_0')],
     [row('mint_0', ['mint_0', 'listing_0', 'purchase_0', 'update_0'])],
   )
@@ -59,7 +59,7 @@ test('a listing the indexer has seen sold is reported as behind', () => {
 })
 
 test('the head the indexer also considers current is not behind', () => {
-  const behind = overlayHeadsWithSuccessors(
+  const behind = overlayAdsBehindChain(
     [ad('mint_0', 'listing_0')],
     [row('mint_0', ['mint_0', 'listing_0'])],
   )
@@ -72,7 +72,7 @@ test('the head the indexer also considers current is not behind', () => {
  * with stale evidence, which is the failure this check exists to prevent.
  */
 test('a record the indexer has not seen yet is never treated as behind', () => {
-  const behind = overlayHeadsWithSuccessors(
+  const behind = overlayAdsBehindChain(
     [ad('mint_0', 'listing_0')],
     [row('mint_0', ['mint_0'])],
   )
@@ -80,9 +80,35 @@ test('a record the indexer has not seen yet is never treated as behind', () => {
 })
 
 test('an ad the overlay never rendered is left to the reader that has it', () => {
-  const behind = overlayHeadsWithSuccessors(
+  const behind = overlayAdsBehindChain(
     [ad('mint_0', 'mint_0')],
     [row('other_0', ['other_0', 'sold_0'])],
   )
   assert.deepEqual(behind, [])
+})
+
+const listed = (outpoint: string, height: number | null): MarketEvent => ({
+  kind: 'listed',
+  outpoint,
+  previousOwner: 'seller',
+  owner: 'seller',
+  price: 1_000_000,
+  height,
+  idx: 0,
+})
+
+/**
+ * The overlay admits a mempool listing and never hears that it was mined, so it
+ * keeps reporting a confirmed sale offer as pending marketplace state.
+ */
+test('a mined event the overlay still reports as mempool is behind', () => {
+  const overlayAd = { ...ad('mint_0', 'listing_0'), marketEvents: [listed('listing_0', null)] }
+  const indexed = { ...row('mint_0', ['mint_0', 'listing_0']), marketEvents: [listed('listing_0', 961_040)] }
+  assert.deepEqual(overlayAdsBehindChain([overlayAd], [indexed]), ['mint_0'])
+})
+
+test('an event both readers report as mempool is not behind', () => {
+  const overlayAd = { ...ad('mint_0', 'listing_0'), marketEvents: [listed('listing_0', null)] }
+  const indexed = { ...row('mint_0', ['mint_0', 'listing_0']), marketEvents: [listed('listing_0', null)] }
+  assert.deepEqual(overlayAdsBehindChain([overlayAd], [indexed]), [])
 })

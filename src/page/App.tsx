@@ -21,7 +21,7 @@ import {
   type MarketEvent,
   type Row,
 } from '../readers/productCatalog'
-import { overlayHeadsWithSuccessors } from '../readers/overlayStaleness.ts'
+import { overlayAdsBehindChain } from '../readers/overlayStaleness.ts'
 import { isFoxplorerCreator } from '../curation'
 import {
   collectionFromProtocolRow,
@@ -1302,7 +1302,7 @@ export function AdLab() {
         // Ask the indexer whether any rendered head has a successor; only that
         // proves the node is behind rather than merely ahead.
         const behind = await readRecords('ad')
-          .then((rows) => overlayHeadsWithSuccessors(overlayAds, rows))
+          .then((rows) => overlayAdsBehindChain(overlayAds, rows))
           .catch((error: unknown) => {
             // An indexer outage is not evidence about the overlay. Render what
             // the node returned rather than blanking the page over it.
