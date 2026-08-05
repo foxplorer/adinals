@@ -295,10 +295,6 @@ export const normalizeFoxPersonality = (text: string): string => {
   return parsed ? serializeFoxPersonality(parsed) : text.trim()
 }
 
-/** One-line description for the ad list, where the full payload is noise. */
-export const foxPersonalitySummary = (selection: FoxPersonality): string =>
-  `${selection.name} · ${selection.job} · ${selection.traits.join(', ')}`
-
 /**
  * Longest payload the lists can produce. The collection's `adMaxChars` is
  * permanent, so it has to clear this on the day the collection is created — a

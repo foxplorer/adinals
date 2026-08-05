@@ -105,7 +105,6 @@ import {
   FOX_TRAITS_MAX,
   FOX_TRAITS_MIN,
   clampFoxNumber,
-  foxPersonalitySummary,
   readFoxPersonality,
   roamingFoxForSlot,
   serializeFoxPersonality,
@@ -548,12 +547,14 @@ function FoxSlider({
   label,
   value,
   note,
+  readOnly,
   onChange,
 }: {
   field: FoxNumericField
   label: string
   value: number
   note?: string
+  readOnly?: boolean
   onChange: (value: number) => void
 }) {
   const range = FOX_PERSONALITY_RANGES[field]
@@ -568,6 +569,7 @@ function FoxSlider({
           max={range.max}
           step={range.step}
           value={value}
+          disabled={readOnly}
           onChange={(event) => onChange(clampFoxNumber(Number(event.target.value), range))}
         />
         <strong className="adlab-fox-readout">
@@ -600,18 +602,28 @@ function FoxPersonalityEditor({
   label,
   maxChars,
   foxId,
+  readOnly = false,
 }: {
   value: string
   onChange: (value: string) => void
   label: string
   maxChars: number | null
   foxId: RoamingFoxId | null
+  /**
+   * Shown to someone who does not own this slot. Every control renders with its
+   * real value and none of them accept input, so what is on offer is legible
+   * before a purchase rather than only after one.
+   */
+  readOnly?: boolean
 }) {
   const selection = readFoxPersonality(value)
-  const emit = (next: Partial<FoxPersonality>) =>
+  const emit = (next: Partial<FoxPersonality>) => {
+    if (readOnly) return
     onChange(serializeFoxPersonality({ ...selection, ...next }))
+  }
 
   const toggleTrait = (trait: string) => {
+    if (readOnly) return
     const chosen = selection.traits.includes(trait)
     if (chosen) {
       if (selection.traits.length <= FOX_TRAITS_MIN) return
@@ -636,6 +648,7 @@ function FoxPersonalityEditor({
       <select
         className="ads-input"
         value={selection[field]}
+        disabled={readOnly}
         onChange={(event) => emit({ [field]: event.target.value } as Partial<FoxPersonality>)}
       >
         {options.map((option) => (
@@ -646,7 +659,7 @@ function FoxPersonalityEditor({
   )
 
   return (
-    <div className="adlab-fox-editor">
+    <div className={`adlab-fox-editor${readOnly ? ' adlab-fox-editor-readonly' : ''}`}>
       <div className="adlab-fox-header">
         {foxId && (
           <img
@@ -664,7 +677,9 @@ function FoxPersonalityEditor({
             {foxId && <small>{foxId}</small>}
           </strong>
           <small className="ads-note">
-            Appearance is not editable — it comes from the demo fox this slot is named for.
+            {readOnly
+              ? 'These are the settings this slot’s owner controls. Buy it and they become yours to change.'
+              : 'Appearance is not editable — it comes from the demo fox this slot is named for.'}
           </small>
         </div>
       </div>
@@ -689,7 +704,7 @@ function FoxPersonalityEditor({
                 type="button"
                 className={`adlab-fox-trait${chosen ? ' adlab-fox-trait-on' : ''}`}
                 aria-pressed={chosen}
-                disabled={atCeiling || atFloor}
+                disabled={readOnly || atCeiling || atFloor}
                 onClick={() => toggleTrait(trait)}
               >
                 {trait}
@@ -700,13 +715,14 @@ function FoxPersonalityEditor({
       </div>
 
       <div className="adlab-fox-grid">
-        <FoxSlider field="mood" label="General mood" value={selection.mood} onChange={(next) => emit({ mood: next })} />
-        <FoxSlider field="agree" label="Agreeableness" value={selection.agree} onChange={(next) => emit({ agree: next })} />
-        <FoxSlider field="chatty" label="Chattiness" value={selection.chatty} onChange={(next) => emit({ chatty: next })} />
+        <FoxSlider field="mood" label="General mood" value={selection.mood} readOnly={readOnly} onChange={(next) => emit({ mood: next })} />
+        <FoxSlider field="agree" label="Agreeableness" value={selection.agree} readOnly={readOnly} onChange={(next) => emit({ agree: next })} />
+        <FoxSlider field="chatty" label="Chattiness" value={selection.chatty} readOnly={readOnly} onChange={(next) => emit({ chatty: next })} />
         <FoxSlider
           field="speed"
           label="Walking speed"
           value={selection.speed}
+          readOnly={readOnly}
           note="Multiplies the server's walking pace."
           onChange={(next) => emit({ speed: next })}
         />
@@ -714,13 +730,17 @@ function FoxPersonalityEditor({
           field="size"
           label="Size"
           value={selection.size}
+          readOnly={readOnly}
           note="Visual only; the fox still takes up the same space on the pavement."
           onChange={(next) => emit({ size: next })}
         />
       </div>
 
       <details className="adlab-fox-payload">
-        <summary>What gets written{maxChars ? ` · ${length}/${maxChars} characters` : ` · ${length} characters`}</summary>
+        <summary>
+          {readOnly ? 'What is on chain' : 'What gets written'}
+          {maxChars ? ` · ${length}/${maxChars} characters` : ` · ${length} characters`}
+        </summary>
         <code>{serialized}</code>
       </details>
       {overCap && (
@@ -746,7 +766,15 @@ function FoxPersonalityReadout({ value, foxId }: { value: string; foxId: Roaming
         />
       )}
       <strong>{selection.name}</strong>
-      <small>{foxPersonalitySummary(selection).replace(`${selection.name} · `, '')}</small>
+      {/*
+        All ten selections, not eight. Hometown and hobby are two of the four
+        identity choices, and a reader who cannot see them cannot tell what this
+        slot's owner actually picked.
+      */}
+      <small>
+        {selection.job} from {selection.home} · {selection.traits.join(', ')}
+      </small>
+      <small>spends their walks {selection.hobby}</small>
       <small className="ads-note">
         mood {selection.mood} · agreeable {selection.agree} · chatty {selection.chatty} ·
         {' '}{selection.speed.toFixed(2)}× pace · {selection.size.toFixed(2)}× size
@@ -3252,7 +3280,16 @@ export function AdLab() {
                     ad.updates.filter((update) => update.verdict).length
                   return (
                     <article
-                      className={`adlab-ad-item${mine || myListing ? ' ads-mine' : ''}${collection.expired ? ' adlab-ad-expired' : ''}`}
+                      className={[
+                        'adlab-ad-item',
+                        (mine || myListing) && 'ads-mine',
+                        collection.expired && 'adlab-ad-expired',
+                        // Every live slot shows the full editor, owned or not, so
+                        // the creative cell always needs its own row here. Only
+                        // an inactive slot falls back to the compact readout,
+                        // which belongs in the column with the other cells.
+                        usesFoxPersonalityEditor && activeSlot && 'adlab-ad-item-wide-editor',
+                      ].filter(Boolean).join(' ')}
                       key={ad.origin}
                     >
                       <div className="adlab-ad-row">
@@ -3570,6 +3607,24 @@ export function AdLab() {
                             </span>
                           ) : usesHexColorEditor ? (
                             <HexColorReadout value={ad.liveText} />
+                          ) : usesFoxPersonalityEditor && activeSlot ? (
+                            // Someone who does not own this slot still sees every
+                            // control, disabled. What a buyer would be acquiring is
+                            // the settings themselves, so a summary line understates
+                            // it. An inactive slot falls through to the readout,
+                            // where a full panel would only add noise.
+                            <FoxPersonalityEditor
+                              value={ad.liveText}
+                              onChange={() => undefined}
+                              maxChars={collection.maxChars}
+                              foxId={roamingFoxForSlot(ad.serial)}
+                              readOnly
+                              label={
+                                roamingFoxForSlot(ad.serial)
+                                  ? `Personality for ${roamingFoxForSlot(ad.serial)}`
+                                  : `Personality for slot ${ad.serial}`
+                              }
+                            />
                           ) : usesFoxPersonalityEditor ? (
                             <FoxPersonalityReadout value={ad.liveText} foxId={roamingFoxForSlot(ad.serial)} />
                           ) : (

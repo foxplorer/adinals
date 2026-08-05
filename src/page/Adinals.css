@@ -2012,6 +2012,29 @@ a.adlab-destination:focus-visible {
   flex-basis: 40px;
 }
 
+/* Not owned: every control shows its real value and takes no input. Muted
+   rather than greyed to illegibility — the point of showing it is that a buyer
+   can read what they would be acquiring. */
+.adlab-fox-editor-readonly {
+  border-style: dashed;
+  border-color: #3d4137;
+}
+
+.adlab-fox-editor-readonly select:disabled,
+.adlab-fox-editor-readonly .adlab-fox-trait:disabled {
+  opacity: 0.72;
+  cursor: default;
+}
+
+.adlab-fox-editor-readonly .adlab-fox-trait-on:disabled {
+  opacity: 1;
+}
+
+.adlab-fox-editor-readonly input[type='range']:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .adlab-fox-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -2815,6 +2838,32 @@ a.adlab-destination:focus-visible {
 
 .adlab-ad-cell::before {
   display: none;
+}
+
+/*
+  A structured editor does not fit in a creative column.
+
+  The row is seven columns wide and the creative cell is one of them, which is
+  right for a line of ad text or a colour swatch and wrong for a panel of
+  dropdowns and sliders — it renders as a tall, thin strip beside six short
+  cells. Rather than move the editor out of the row in markup, the cell is
+  placed on its own full-width line beneath the others: the remaining six cells
+  auto-place along row one, and the editor gets the whole width of row two.
+
+  Scoped above 1050px because the narrow layouts already give the creative cell
+  `grid-column: 1 / -1`, and a `grid-row` on top of that would leave a hole.
+*/
+@media (min-width: 1051px) {
+  .adlab-ad-item-wide-editor .adlab-ad-row {
+    grid-template-columns: 48px minmax(105px, 0.85fr) minmax(105px, 0.85fr) 85px minmax(145px, 1fr) 150px;
+  }
+
+  .adlab-ad-item-wide-editor .adlab-creative-cell {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    padding-top: 12px;
+    border-top: 1px solid #30332c;
+  }
 }
 
 .adlab-ad-item > .adlab-activity {
