@@ -9,6 +9,7 @@ import {
 import { reconcileLifecyclePublication } from '../actions/lifecyclePublicationReconciliation.ts'
 import { LIFECYCLE_PUBLISH_ENABLED } from '../config/environment.ts'
 import {
+  deleteLifecyclePublicationAttempt,
   loadLifecyclePublicationAttempts,
   saveLifecyclePublicationAttempt,
   type LifecyclePublicationAttempt,
@@ -168,6 +169,34 @@ export function LifecyclePublicationPanel({
     }
   }
 
+  /**
+   * Closes an attempt reconciliation proved was never published.
+   *
+   * Deleting the record is what unblocks the panel: an open attempt pins it to
+   * one outpoint, so without this a batch that failed before the wallet was
+   * ever called can never be published or cleanly abandoned. Only a `rejected`
+   * attempt qualifies, which requires the wallet and both public readers to
+   * agree the batch is absent — an accepted record is evidence and is never
+   * removable here.
+   */
+  const discard = async () => {
+    const attempt = selection.attempt
+    if (!attempt || attempt.outcome !== 'rejected' || working) return
+    setWorking('discard')
+    setError('')
+    try {
+      await deleteLifecyclePublicationAttempt(attempt.outpoint)
+      setAttempts((current) => current.filter((item) => item.outpoint !== attempt.outpoint))
+      setPreflight(null)
+      setConfirmation('')
+      setUnderstood(false)
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure))
+    } finally {
+      setWorking('')
+    }
+  }
+
   if (!selection.action && !selection.attempt) return null
   const action = selection.action
   const phrase = action ? `PUBLISH ${action.txid.slice(0, 8)}` : ''
@@ -186,6 +215,18 @@ export function LifecyclePublicationPanel({
           <button type="button" className="ads-back" disabled={Boolean(working)} onClick={() => void reconcile()}>
             {working === 'reconcile' ? 'Reconciling exact txids…' : 'Reconcile wallet + public network'}
           </button>
+          {selection.attempt.outcome === 'rejected' && (
+            <>
+              <p>
+                This batch was never published. Discarding the attempt record unblocks this
+                rehearsal so it can be published or released; it changes nothing on chain and
+                nothing in the wallet.
+              </p>
+              <button type="button" className="ads-back" disabled={Boolean(working)} onClick={() => void discard()}>
+                {working === 'discard' ? 'Discarding closed attempt…' : 'Discard this closed attempt'}
+              </button>
+            </>
+          )}
         </>
       ) : (
         <>

@@ -1952,6 +1952,193 @@ a.adlab-destination:focus-visible {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
+/* Roaming city fox personality editor. Every control is a choice or a clamped
+   range, so the layout reads as a settings panel rather than a text form. */
+
+.adlab-fox-editor {
+  display: flex;
+  flex: 1 1 100%;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 13px;
+  border: 1px solid #34382f;
+  border-radius: 8px;
+  background: #14160f;
+}
+
+.adlab-fox-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.adlab-fox-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.adlab-fox-identity {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 7px;
+  color: #e6eadf;
+  font-size: 15px;
+}
+
+.adlab-fox-identity > small {
+  color: #8d8f89;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+}
+
+/* Pixel art. Smoothing it turns a deliberate 480px grid into mush. */
+.adlab-fox-portrait {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+  border: 1px solid #34382f;
+  border-radius: 6px;
+  background: #0e100b;
+  image-rendering: pixelated;
+}
+
+.adlab-fox-portrait-small {
+  width: 40px;
+  height: 40px;
+  flex-basis: 40px;
+}
+
+.adlab-fox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px 14px;
+}
+
+.adlab-fox-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.adlab-fox-field > span {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: #8d8f89;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.adlab-fox-field select {
+  width: 100%;
+  min-width: 0;
+}
+
+.adlab-fox-slider {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 46px;
+  align-items: center;
+  gap: 9px;
+}
+
+.adlab-fox-slider input[type='range'] {
+  width: 100%;
+  min-width: 0;
+  accent-color: #c7f43d;
+}
+
+.adlab-fox-readout {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: #e6eadf;
+}
+
+.adlab-fox-scale {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  color: #6f7268;
+  font-size: 9px;
+}
+
+.adlab-fox-traits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.adlab-fox-trait {
+  padding: 4px 9px;
+  border: 1px solid #4d5148;
+  border-radius: 5px;
+  background: #161714;
+  color: #b9bdb0;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.adlab-fox-trait:hover:not(:disabled) {
+  border-color: #c7f43d;
+  color: #e6eadf;
+}
+
+.adlab-fox-trait-on {
+  border-color: #c7f43d;
+  background: rgba(199, 244, 61, 0.14);
+  color: #e6eadf;
+}
+
+.adlab-fox-trait:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.adlab-fox-payload > summary {
+  color: #8d8f89;
+  cursor: pointer;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.adlab-fox-payload > code {
+  display: block;
+  margin-top: 6px;
+  padding: 8px 9px;
+  border-radius: 6px;
+  background: #0e100b;
+  color: #b9bdb0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.adlab-fox-summary {
+  display: inline-grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 9px;
+}
+
+.adlab-fox-summary > .adlab-fox-portrait-small {
+  grid-row: span 3;
+}
+
+.adlab-fox-summary > strong {
+  color: #e6eadf;
+  font-size: 13px;
+}
+
 .adlab-approval-creative {
   width: min(320px, 100%);
 }

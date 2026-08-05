@@ -46,6 +46,25 @@ export function classifyLifecyclePublicationReconciliation(
       walletStatuses, network, indexerOutcome,
     }
   }
+  // An attempt that never reached the wallet's send path. `nosend` is a
+  // positive statement rather than an absence of one: the wallet still holds
+  // the action, still reserves its funding, and has handed it to nobody. With
+  // every reader also reporting the batch absent, "did this publish?" has a
+  // definite answer, and leaving it uncertain strands the attempt forever —
+  // `nosend` can never become `failed` on its own, so no later reconcile would
+  // resolve it either.
+  //
+  // This is the state a preflight throw leaves behind: the attempt record is
+  // written before the wallet is called, so a guard that refuses to publish
+  // still produces an open attempt with nothing behind it.
+  const everyWalletNoSend = attempt.txids.every((txid) => walletStatuses[txid] === 'nosend')
+  if (everyWalletNoSend && everyReaderAbsent) {
+    return {
+      checkedAt: new Date().toISOString(), outcome: 'rejected',
+      message: 'The wallet still holds every exact transaction as no-send and every reader reports the batch absent, so it was never published. Discard this attempt to publish or release the rehearsal.',
+      walletStatuses, network, indexerOutcome,
+    }
+  }
   return {
     checkedAt: new Date().toISOString(), outcome: 'uncertain',
     message: 'Wallet and public-reader evidence do not prove a final outcome. Do not publish or replace this chain.',

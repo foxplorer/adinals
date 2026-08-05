@@ -8,6 +8,9 @@
  */
 export const FOXPLORER_CREATOR_ADDRESSES = [
   '15Gn8burrsHF8rMGccEiHMGWrYttPLRNf6',
+  // Creator of `Roaming City At Night NPCs`. Listing an address labels every
+  // collection it has signed and every one it signs later, not one collection.
+  '16Mcmnsk4bdrwfbw8AyDhirWYgJyhbvCD6',
 ] as const
 
 const foxplorerCreators = new Set<string>(FOXPLORER_CREATOR_ADDRESSES)

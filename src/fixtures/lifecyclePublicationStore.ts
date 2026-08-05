@@ -37,6 +37,32 @@ export async function saveLifecyclePublicationAttempt(attempt: LifecyclePublicat
   }
 }
 
+/**
+ * Removes one closed attempt record.
+ *
+ * Only meaningful for an attempt reconciliation has proven was never published:
+ * the record is the sole thing keeping the panel on that outpoint, so deleting
+ * it returns the retained rehearsal to a publishable state. It touches no
+ * wallet action and no transaction, and an attempt that reconciled to
+ * `accepted` must never be discarded — that record is the evidence a batch is
+ * already public.
+ */
+export async function deleteLifecyclePublicationAttempt(outpoint: string): Promise<void> {
+  if (typeof indexedDB === 'undefined') throw new Error('IndexedDB is unavailable.')
+  const database = await openAdinalsDatabase()
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(LIFECYCLE_PUBLICATIONS_STORE, 'readwrite')
+      transaction.objectStore(LIFECYCLE_PUBLICATIONS_STORE).delete(outpoint)
+      transaction.oncomplete = () => resolve()
+      transaction.onerror = () => reject(transaction.error ?? new Error('Could not discard the lifecycle publication attempt.'))
+      transaction.onabort = () => reject(transaction.error ?? new Error('Discarding the lifecycle publication attempt was aborted.'))
+    })
+  } finally {
+    database.close()
+  }
+}
+
 export async function loadLifecyclePublicationAttempts(identityKey: string): Promise<LifecyclePublicationAttempt[]> {
   if (typeof indexedDB === 'undefined') return []
   const database = await openAdinalsDatabase()

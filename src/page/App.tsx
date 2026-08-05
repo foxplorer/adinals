@@ -85,12 +85,55 @@ import {
   type AdinalsCollectionRules,
 } from '../protocol/records'
 import {
+  canonicalizeLiveCreative,
   colorPickerValue,
   getAdinalsCollectionUiProfile,
+  isCreativeTextValid,
   isValidHexColor,
+  normalizeCreativeText,
   normalizeHexColor,
+  parseCollectionUiProfileOverride,
 } from './adinalsCollectionProfiles'
+import {
+  DEFAULT_FOX_PERSONALITY,
+  FOX_HOBBIES,
+  FOX_HOMES,
+  FOX_JOBS,
+  FOX_NAMES,
+  FOX_PERSONALITY_RANGES,
+  FOX_TRAITS,
+  FOX_TRAITS_MAX,
+  FOX_TRAITS_MIN,
+  clampFoxNumber,
+  foxPersonalitySummary,
+  readFoxPersonality,
+  roamingFoxForSlot,
+  serializeFoxPersonality,
+  type FoxNumericField,
+  type FoxPersonality,
+  type RoamingFoxId,
+} from './foxPersonality'
+import cityFox12 from '../assets/city-fox-demo-fox-12.png'
+import cityFox29 from '../assets/city-fox-demo-fox-29.png'
+import cityFox31 from '../assets/city-fox-demo-fox-31.png'
+import cityFox67 from '../assets/city-fox-demo-fox-67.png'
 import './Adinals.css'
+
+/**
+ * The demo fox each slot wears, copied from `frontend-PROD/src/assets`.
+ *
+ * Bundled rather than fetched: they are 3 KB each, and an editor that cannot
+ * show which animal it is editing is worse than one that ships four small
+ * files. They are also the reason appearance is not an editable field — what
+ * the owner is choosing is who this fox is, and this is what it looks like
+ * while they choose.
+ */
+const ROAMING_FOX_PORTRAITS: Record<RoamingFoxId, string> = {
+  'city-fox-12': cityFox12,
+  'city-fox-29': cityFox29,
+  'city-fox-31': cityFox31,
+  'city-fox-67': cityFox67,
+}
 
 type CreativeFormat = 'text' | 'image'
 type CollectionScope = 'all' | 'featured' | 'mine'
@@ -145,6 +188,17 @@ type RecentAdAction = {
 }
 
 type OverlayReceiptStatus = OverlaySubmissionStatus | 'not-queued'
+
+/**
+ * The collection's permanent character cap, counted the way the record
+ * validator counts it.
+ *
+ * The plain text fields enforce this with `maxLength`, but a structured editor
+ * has no text input to put it on, so the check has to be explicit or the write
+ * fails at the protocol layer instead of at the button.
+ */
+const withinCollectionTextCap = (text: string, maxChars: number | null): boolean =>
+  !maxChars || [...text].length <= maxChars
 
 const isTransientUpdateProofError = (value: string): boolean =>
   /failed to fetch|network|timeout|timed out|temporarily unavailable|raw transaction .* unavailable|abort/i.test(value)
@@ -477,6 +531,226 @@ function HexColorReadout({ value }: { value: string }) {
         aria-hidden="true"
       />
       <span>“{value || '—'}”</span>
+    </span>
+  )
+}
+
+const FOX_SLIDER_ENDS: Record<FoxNumericField, [string, string, string]> = {
+  mood: ['sour', 'even', 'sunny'],
+  agree: ['contrary', 'fair', 'obliging'],
+  chatty: ['clipped', 'easy', 'talkative'],
+  speed: ['strolling', '', 'hurrying'],
+  size: ['smaller', '', 'larger'],
+}
+
+function FoxSlider({
+  field,
+  label,
+  value,
+  note,
+  onChange,
+}: {
+  field: FoxNumericField
+  label: string
+  value: number
+  note?: string
+  onChange: (value: number) => void
+}) {
+  const range = FOX_PERSONALITY_RANGES[field]
+  const [low, middle, high] = FOX_SLIDER_ENDS[field]
+  return (
+    <label className="adlab-inline-field adlab-fox-field">
+      <span>{label}</span>
+      <span className="adlab-fox-slider">
+        <input
+          type="range"
+          min={range.min}
+          max={range.max}
+          step={range.step}
+          value={value}
+          onChange={(event) => onChange(clampFoxNumber(Number(event.target.value), range))}
+        />
+        <strong className="adlab-fox-readout">
+          {range.decimals ? `${value.toFixed(range.decimals)}×` : value}
+        </strong>
+      </span>
+      <span className="adlab-fox-scale">
+        <small>{low}</small>
+        {middle && <small>{middle}</small>}
+        <small>{high}</small>
+      </span>
+      {note && <small className="ads-note">{note}</small>}
+    </label>
+  )
+}
+
+/**
+ * The owner-facing personality editor.
+ *
+ * Draft state stays a string everywhere else in this page, so this component
+ * reads the payload leniently, applies one change, and hands back canonical
+ * JSON. A record written against an older list therefore opens with its
+ * still-valid selections intact and only the retired field reset.
+ *
+ * There is no free text control on purpose. See `foxPersonality.ts`.
+ */
+function FoxPersonalityEditor({
+  value,
+  onChange,
+  label,
+  maxChars,
+  foxId,
+}: {
+  value: string
+  onChange: (value: string) => void
+  label: string
+  maxChars: number | null
+  foxId: RoamingFoxId | null
+}) {
+  const selection = readFoxPersonality(value)
+  const emit = (next: Partial<FoxPersonality>) =>
+    onChange(serializeFoxPersonality({ ...selection, ...next }))
+
+  const toggleTrait = (trait: string) => {
+    const chosen = selection.traits.includes(trait)
+    if (chosen) {
+      if (selection.traits.length <= FOX_TRAITS_MIN) return
+      emit({ traits: selection.traits.filter((entry) => entry !== trait) })
+      return
+    }
+    if (selection.traits.length >= FOX_TRAITS_MAX) return
+    emit({ traits: [...selection.traits, trait] })
+  }
+
+  const serialized = serializeFoxPersonality(selection)
+  const length = [...serialized].length
+  const overCap = Boolean(maxChars && length > maxChars)
+
+  const choice = (
+    field: 'name' | 'home' | 'job' | 'hobby',
+    fieldLabel: string,
+    options: readonly string[]
+  ) => (
+    <label className="adlab-inline-field adlab-fox-field">
+      <span>{fieldLabel}</span>
+      <select
+        className="ads-input"
+        value={selection[field]}
+        onChange={(event) => emit({ [field]: event.target.value } as Partial<FoxPersonality>)}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>{option}</option>
+        ))}
+      </select>
+    </label>
+  )
+
+  return (
+    <div className="adlab-fox-editor">
+      <div className="adlab-fox-header">
+        {foxId && (
+          <img
+            className="adlab-fox-portrait"
+            src={ROAMING_FOX_PORTRAITS[foxId]}
+            alt={`Demo fox worn by ${foxId}`}
+            width={480}
+            height={480}
+          />
+        )}
+        <div className="adlab-fox-header-text">
+          <span className="adlab-kicker">{label}</span>
+          <strong className="adlab-fox-identity">
+            {selection.name}
+            {foxId && <small>{foxId}</small>}
+          </strong>
+          <small className="ads-note">
+            Appearance is not editable — it comes from the demo fox this slot is named for.
+          </small>
+        </div>
+      </div>
+
+      <div className="adlab-fox-grid">
+        {choice('name', 'Name', FOX_NAMES)}
+        {choice('home', 'Hometown', FOX_HOMES)}
+        {choice('job', 'Job', FOX_JOBS)}
+        {choice('hobby', 'Hobby', FOX_HOBBIES)}
+      </div>
+
+      <div className="adlab-fox-field">
+        <span>Traits <small className="ads-note">{selection.traits.length} of {FOX_TRAITS_MAX}</small></span>
+        <div className="adlab-fox-traits">
+          {FOX_TRAITS.map((trait) => {
+            const chosen = selection.traits.includes(trait)
+            const atCeiling = !chosen && selection.traits.length >= FOX_TRAITS_MAX
+            const atFloor = chosen && selection.traits.length <= FOX_TRAITS_MIN
+            return (
+              <button
+                key={trait}
+                type="button"
+                className={`adlab-fox-trait${chosen ? ' adlab-fox-trait-on' : ''}`}
+                aria-pressed={chosen}
+                disabled={atCeiling || atFloor}
+                onClick={() => toggleTrait(trait)}
+              >
+                {trait}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="adlab-fox-grid">
+        <FoxSlider field="mood" label="General mood" value={selection.mood} onChange={(next) => emit({ mood: next })} />
+        <FoxSlider field="agree" label="Agreeableness" value={selection.agree} onChange={(next) => emit({ agree: next })} />
+        <FoxSlider field="chatty" label="Chattiness" value={selection.chatty} onChange={(next) => emit({ chatty: next })} />
+        <FoxSlider
+          field="speed"
+          label="Walking speed"
+          value={selection.speed}
+          note="Multiplies the server's walking pace."
+          onChange={(next) => emit({ speed: next })}
+        />
+        <FoxSlider
+          field="size"
+          label="Size"
+          value={selection.size}
+          note="Visual only; the fox still takes up the same space on the pavement."
+          onChange={(next) => emit({ size: next })}
+        />
+      </div>
+
+      <details className="adlab-fox-payload">
+        <summary>What gets written{maxChars ? ` · ${length}/${maxChars} characters` : ` · ${length} characters`}</summary>
+        <code>{serialized}</code>
+      </details>
+      {overCap && (
+        <small className="ads-note adlab-field-error">
+          This collection caps ads at {maxChars} characters, which these selections exceed.
+        </small>
+      )}
+    </div>
+  )
+}
+
+function FoxPersonalityReadout({ value, foxId }: { value: string; foxId: RoamingFoxId | null }) {
+  const selection = readFoxPersonality(value)
+  return (
+    <span className="adlab-fox-summary">
+      {foxId && (
+        <img
+          className="adlab-fox-portrait adlab-fox-portrait-small"
+          src={ROAMING_FOX_PORTRAITS[foxId]}
+          alt={`Demo fox worn by ${foxId}`}
+          width={480}
+          height={480}
+        />
+      )}
+      <strong>{selection.name}</strong>
+      <small>{foxPersonalitySummary(selection).replace(`${selection.name} · `, '')}</small>
+      <small className="ads-note">
+        mood {selection.mood} · agreeable {selection.agree} · chatty {selection.chatty} ·
+        {' '}{selection.speed.toFixed(2)}× pace · {selection.size.toFixed(2)}× size
+      </small>
     </span>
   )
 }
@@ -1510,26 +1784,42 @@ export function AdLab() {
     () => collections.find((item) => item.origin === selected) ?? null,
     [collections, selected]
   )
-  const collectionUiProfile = getAdinalsCollectionUiProfile(collection?.origin)
-  const usesHexColorEditor = collectionUiProfile.creativeEditor === 'hex-color'
+  // Read once. A URL is not state the page owns, and re-reading it per render
+  // would make the editor depend on navigation that never happens.
+  const uiProfileOverride = useMemo(
+    () => parseCollectionUiProfileOverride(window.location.search),
+    []
+  )
+  const collectionUiProfile = getAdinalsCollectionUiProfile(collection?.origin, uiProfileOverride)
+  const creativeEditor = collectionUiProfile.creativeEditor
+  const usesHexColorEditor = creativeEditor === 'hex-color'
+  const usesFoxPersonalityEditor = creativeEditor === 'fox-personality'
   const mintUrlResult = useMemo(
     () => collectionUiProfile.destinationLinks
       ? validateAdUrl(mintUrl)
       : { url: '', error: '' },
     [collectionUiProfile.destinationLinks, mintUrl]
   )
-  const normalizedMintText = usesHexColorEditor
-    ? normalizeHexColor(mintText)
-    : mintText.trim()
-  const mintTextValid = !usesHexColorEditor || isValidHexColor(mintText)
+  const normalizedMintText = normalizeCreativeText(creativeEditor, mintText)
+  const mintTextValid =
+    isCreativeTextValid(creativeEditor, mintText) &&
+    withinCollectionTextCap(normalizedMintText, collection?.maxChars ?? null)
   useEffect(() => {
     // Creative belongs to one collection and one immutable format. Never carry a
     // previous collection's text or image into the next mint form.
-    setMintText('')
+    //
+    // A structured editor opens on its defaults rather than empty, because a
+    // blank payload is not a state its controls can express — there is no way
+    // for an owner to type their way out of it.
+    setMintText(
+      getAdinalsCollectionUiProfile(collection?.origin, uiProfileOverride).creativeEditor === 'fox-personality'
+        ? serializeFoxPersonality(DEFAULT_FOX_PERSONALITY)
+        : ''
+    )
     setMintUrl('')
     setMintImage(null)
     setMintFileInputKey((key) => key + 1)
-  }, [collection?.origin])
+  }, [collection?.origin, uiProfileOverride])
   const members = useMemo(
     () =>
       collection
@@ -2748,6 +3038,25 @@ export function AdLab() {
                     onChange={setMintText}
                     label="Starting color"
                   />
+                ) : usesFoxPersonalityEditor ? (
+                  (() => {
+                    let next = 1
+                    while (occupiedSlots.has(next)) next += 1
+                    const fox = roamingFoxForSlot(next)
+                    return (
+                      <FoxPersonalityEditor
+                        value={mintText}
+                        onChange={setMintText}
+                        maxChars={collection.maxChars}
+                        foxId={fox}
+                        label={
+                          fox
+                            ? `Starting personality · slot ${next} drives ${fox}`
+                            : `Starting personality · slot ${next}`
+                        }
+                      />
+                    )
+                  })()
                 ) : (
                   <label className="ads-field">
                     <span>Starting ad text</span>
@@ -2932,10 +3241,10 @@ export function AdLab() {
                     ? validateAdUrl(destinationDraft)
                     : { url: '', error: '' }
                   const textDraft = adDraft[ad.origin] ?? ad.liveText
-                  const normalizedTextDraft = usesHexColorEditor
-                    ? normalizeHexColor(textDraft)
-                    : textDraft.trim()
-                  const textDraftValid = !usesHexColorEditor || isValidHexColor(textDraft)
+                  const normalizedTextDraft = normalizeCreativeText(creativeEditor, textDraft)
+                  const textDraftValid =
+                    isCreativeTextValid(creativeEditor, textDraft) &&
+                    withinCollectionTextCap(normalizedTextDraft, collection.maxChars)
                   const activityCount =
                     1 +
                     ad.marketEvents.length +
@@ -3124,6 +3433,20 @@ export function AdLab() {
                                   }
                                   label={`Color for slot ${ad.serial}`}
                                 />
+                              ) : usesFoxPersonalityEditor ? (
+                                <FoxPersonalityEditor
+                                  value={textDraft}
+                                  onChange={(value) =>
+                                    setAdDraft((drafts) => ({ ...drafts, [ad.origin]: value }))
+                                  }
+                                  maxChars={collection.maxChars}
+                                  foxId={roamingFoxForSlot(ad.serial)}
+                                  label={
+                                    roamingFoxForSlot(ad.serial)
+                                      ? `Personality for ${roamingFoxForSlot(ad.serial)}`
+                                      : `Personality for slot ${ad.serial}`
+                                  }
+                                />
                               ) : (
                                 <input
                                   className="ads-input ads-adinput"
@@ -3166,9 +3489,8 @@ export function AdLab() {
                                   !normalizedTextDraft ||
                                   !textDraftValid ||
                                   (
-                                    normalizedTextDraft === (
-                                      usesHexColorEditor ? normalizeHexColor(ad.liveText) : ad.liveText
-                                    ) && destinationResult.url === ad.liveUrl
+                                    normalizedTextDraft === canonicalizeLiveCreative(creativeEditor, ad.liveText) &&
+                                    destinationResult.url === ad.liveUrl
                                   )
                                 }
                                 onClick={() => {
@@ -3248,6 +3570,8 @@ export function AdLab() {
                             </span>
                           ) : usesHexColorEditor ? (
                             <HexColorReadout value={ad.liveText} />
+                          ) : usesFoxPersonalityEditor ? (
+                            <FoxPersonalityReadout value={ad.liveText} foxId={roamingFoxForSlot(ad.serial)} />
                           ) : (
                             <CreativePreview
                               format="text"
