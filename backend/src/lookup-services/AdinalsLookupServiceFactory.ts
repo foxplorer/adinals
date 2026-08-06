@@ -16,6 +16,7 @@ import {
   type AdinalsStorageLike
 } from './AdinalsStorage.js'
 import { backfillAnnotations } from './annotationBackfill.js'
+import { arcIngest, arcIngestUrl, backfillPositions, readChainPosition } from './positionBackfill.js'
 import { inspectAdinalsTransactionOutput } from '../protocol/recordEnvelope.js'
 import { classifyLifecycleTransition } from '../protocol/lifecycleRecords.js'
 import {
@@ -31,7 +32,7 @@ import {
   decodeP2PKH
 } from '../protocol/scriptTemplates.js'
 import { DERIVATION_VERSION, displayEligible, parseOutpoint } from './projections.js'
-import { replayCollection, replayIfStale } from './projectionReplay.js'
+import { replayCollection, replayIfStale, replayProjections } from './projectionReplay.js'
 import { CollectionReplayQueue } from './replayQueue.js'
 
 /** Whitelists that keep a query on an index instead of into a scan. */
@@ -393,6 +394,59 @@ export class AdinalsLookupService implements LookupService {
   }
 }
 
+/** Roughly a block, which is the only thing that can change the answer. */
+const POSITION_SWEEP_MS = 10 * 60 * 1000
+
+/**
+ * Gives mined rows the proof they were admitted without.
+ *
+ * Nothing else can: the engine returns early for a transaction it has already
+ * applied, so a resubmission carrying the proof never reaches this service, and
+ * the lookup interface has no callback for the engine to report a height
+ * through. Left alone, every record this application publishes — all of them
+ * submitted the moment they broadcast — stays unconfirmed to every reader for
+ * as long as the node holds it.
+ */
+const sweepPositions = async (storage: AdinalsStorage): Promise<void> => {
+  const ingestUrl = arcIngestUrl()
+  try {
+    const report = await backfillPositions(
+      storage,
+      readChainPosition(),
+      arcIngest(ingestUrl)
+    )
+    // Named in full, because a proof route this cannot reach is the one failure
+    // that leaves every record unconfirmed while looking like an empty mempool.
+    for (const failure of report.failed) {
+      console.warn(`  position repair failed via ${ingestUrl}:`, failure)
+    }
+    if (report.positioned === 0) {
+      if (report.unresolved.length > 0) {
+        console.log(
+          `Adinals position backfill: nothing to position, ` +
+          `${report.unresolved.length} still unmined of ${report.scanned} scanned`
+        )
+      }
+      return
+    }
+    console.log(
+      `Adinals position backfill: ${report.positioned} positioned, ` +
+      `${report.unresolved.length} still unmined, ${report.failed.length} failed ` +
+      `of ${report.scanned} scanned`
+    )
+    // Decision ordering is derived from chain position, so the disposable layer
+    // is rebuilt from the evidence that just improved.
+    const replay = await replayProjections(storage)
+    console.log(
+      `Adinals projection replay after position backfill: ${replay.collections} ` +
+      `collections, ${replay.ads} ads in ${replay.milliseconds} ms`
+    )
+  } catch (error: unknown) {
+    // A reader outage postpones the repair; it never takes the node down.
+    console.warn('Adinals position backfill failed; retrying on the next sweep', error)
+  }
+}
+
 export default (db: Db): AdinalsLookupService => {
   const storage = new AdinalsStorage(db)
   void storage.ensureIndexes().then(async () => {
@@ -408,6 +462,14 @@ export default (db: Db): AdinalsLookupService => {
       `${report.unresolved.length} unresolved of ${report.scanned} scanned`
     )
     for (const item of report.unresolved) console.warn('  unresolved:', item)
+  }).then(async () => {
+    await sweepPositions(storage)
+    // Every record this application publishes is admitted from the mempool, so
+    // the gap this closes reopens with each one. A node that has been up for a
+    // week must repair what was mined during that week, not only what was
+    // pending when it started.
+    const sweep = setInterval(() => { void sweepPositions(storage) }, POSITION_SWEEP_MS)
+    sweep.unref?.()
   }).then(async () => {
     // The derived layer is disposable: if it was built by older derivation
     // code, or is missing entirely, it is replayed from evidence already held.
